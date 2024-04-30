@@ -23,7 +23,7 @@ from utils.parse_arguments import parse_arguments
 from utils.dataset import DataSet, SLICES
 from utils.unet_preprocessing import convert_labels_to_single_mask
 from utils.dice_score import dice_loss, tversky_loss
-from utils.unet_postprocessing import generate_combined_mask, get_centroids
+from utils.unet_postprocessing import generate_combined_mask, generate_keypoint_image, get_centroids
 from evaluate import evaluate
 
 from utils.models.RegressionCNN import *
@@ -93,8 +93,8 @@ sweep_config = {
 }
 
 
-data_path = './data/standard_labels/train'
-val_data_path = './data/standard_labels/val'
+data_path = './data/original_standard_labels/train'
+val_data_path = './data/original_standard_labels/val'
 
 checkpoint_path = Path('./checkpoints/')
 save_checkpoint = False
@@ -107,7 +107,7 @@ filter_level = 0
 record_spread = False
 
 batch_size = 8
-num_epochs = 100
+num_epochs = 200
 # num_features = 8
 # relu = False
 # dropout = 0.5
@@ -275,6 +275,8 @@ def train_model():
 
                             logging.info('Validation Dice score: {}'.format(val_score))
                             try:
+                                keypoint_file_path = generate_keypoint_image(true_masks[0], masks_pred.argmax(dim=1)[0], images[0], unet.n_classes)
+
                                 experiment.log({
                                     'learning rate': optimizer.param_groups[0]['lr'],
                                     'validation score': val_score,
@@ -283,14 +285,13 @@ def train_model():
                                     'train masks': {
                                         'true': wandb.Image(true_masks[0].float().cpu()),
                                         'pred': wandb.Image(masks_pred.argmax(dim=1)[0].float().cpu()),
+                                        'keypoints': wandb.Image(keypoint_file_path)
                                     },
                                     'step': global_step,
                                     'epoch': epoch,
                                     **histograms,
                                     **percentile_images
                                 })
-
-                                generate_combined_mask(true_masks[0], masks_pred.argmax(dim=1)[0], images[0], unet.n_classes, experiment)
                             except Exception as e:
                                 print(f"An error occurred: {e}")
 
@@ -302,5 +303,5 @@ def train_model():
               logging.info(f'Checkpoint {epoch} saved!')
 
 wandb.login(key=wandb_key)
-sweep_id = wandb.sweep(sweep_config, project="U-Net-4.28-test")
+sweep_id = wandb.sweep(sweep_config, project="U-Net-4.29-sweep-original-labels")
 wandb.agent(sweep_id, train_model, count=30)

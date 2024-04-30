@@ -1,6 +1,7 @@
 import numpy as np
 import torch
 import matplotlib.pyplot as plt
+import matplotlib.lines as mlines
 import tempfile
 import wandb
 
@@ -19,7 +20,7 @@ def get_centroids(mask, num_classes):
 
     return centroids
 
-def generate_combined_mask(mask_true, mask_pred, image, num_classes, experiment, log_name='combined mask'):
+def generate_keypoint_image(mask_true, mask_pred, image, num_classes):
     # Calculate the centroids of the true labels and the predicted labels
     centroids_true = get_centroids(mask_true, num_classes)
     centroids_pred = get_centroids(mask_pred, num_classes)
@@ -35,20 +36,36 @@ def generate_combined_mask(mask_true, mask_pred, image, num_classes, experiment,
     
     # Plot the centroids of the true mask
     for value, centroid in centroids_true.items():
-        ax.scatter(*centroid, color=cmap(value), label=f'GT {value}')
+        ax.scatter(*centroid, color=cmap(value), label=f'GT {value}', marker='+')
     
     # Plot the centroids of the predicted mask
     for value, centroid in centroids_pred.items():
-        ax.scatter(*centroid, color=cmap(value), label=f'Prediced {value}')
+        ax.scatter(*centroid, color=cmap(value), label=f'Prediced {value}', marker='x')
+
+    # Create a list of Line2D objects for the legend
+    legend_elements = [mlines.Line2D([], [], color=cmap(1), marker='.', linestyle='None', markersize=10, label='Anterior'),
+                    mlines.Line2D([], [], color=cmap(2), marker='.', linestyle='None', markersize=10, label='Inferior')]
 
     # Add a legend
-    ax.legend()
+    ax.legend(handles=legend_elements)
 
     # Save the figure to a temporary file
-    with tempfile.NamedTemporaryFile(suffix='.png') as f:
+    with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as f:
         fig.savefig(f.name)
-        # Log the file as a wandb Image
-        experiment.log({log_name : wandb.Image(f.name)})
+        # Return the path to the file
+        return f.name
+    
+def compile_masks(mask_true, num_classes):
+    # Create a tensor of class numbers
+    class_numbers = torch.arange(num_classes).view(-1, 1, 1).to(mask_true.device)
+
+    # Multiply each class mask by its class number
+    weighted_masks = mask_true * class_numbers
+
+    # Take the maximum along the class dimension to create the single class mask
+    compiled_mask = weighted_masks.max(dim=0)[0]
+
+    return compiled_mask
 
 
 def calculate_rmse(mask_true, mask_pred, num_classes):

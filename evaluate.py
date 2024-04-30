@@ -1,4 +1,6 @@
 import logging
+import os
+from dotenv import load_dotenv
 import torch
 import wandb
 import numpy as np
@@ -9,7 +11,7 @@ from unet.unet_model import UNet
 from utils.dataset import DataSet
 from torch.utils.data import DataLoader
 from utils.unet_preprocessing import convert_labels_to_radial_masks, convert_labels_to_single_mask
-from utils.unet_postprocessing import calculate_rmse
+from utils.unet_postprocessing import calculate_rmse, compile_masks, generate_keypoint_image
 from utils.dice_score import multiclass_dice_coeff, dice_coeff, dice_loss
 
 
@@ -73,77 +75,59 @@ def evaluate(net, dataloader, device, amp, mask_sigma, percentiles=[1, 25, 50, 7
         mask_pred = closest_entry['mask_pred']
         image = closest_entry['image']
 
+        # Convert masks back into form of single mask (w/ numbers for each class)
+        mask_true_compiled = compile_masks(mask_true[0], net.n_classes)
+        mask_pred_compiled = compile_masks(mask_pred[0], net.n_classes)
+
+        keypoint_file_path = generate_keypoint_image(mask_true_compiled, mask_pred_compiled, image[0], net.n_classes)
+
         # Store the masks and image in the results dictionary under the percentile key
         percentile_images[f'validation {percentiles[i]}th percentile'] = {
-            'mask_true': wandb.Image(mask_true[0, 0].float().cpu()),
-            'mask_pred': wandb.Image(mask_pred[0, 0].float().cpu()),
+            'mask_true': wandb.Image(mask_true_compiled),
+            'mask_pred': wandb.Image(mask_pred_compiled),
             'mask_pred_anterior': wandb.Image(mask_pred[0, 1].float().cpu()),
             'mask_pred_inferior': wandb.Image(mask_pred[0, 2].float().cpu()),
             'image': wandb.Image(image[0, 0].float().cpu()),
+            'keypoints': wandb.Image(keypoint_file_path)
         }
 
     net.train()
     return dice_score / max(num_val_batches, 1), rmse_score / max(num_val_batches, 1), percentile_images
 
 if __name__ == "__main__":
+
+    load_dotenv()
+    wandb_key = os.getenv('WANDB_API_KEY')
+
     no_midpoint = True
     bilinear = False
 
     net = UNet(n_channels=1, n_classes=3 if no_midpoint else 4, bilinear=bilinear)
-    model = 'checkpoints/checkpoint_epoch100.pth'
+
+    ########
+    MODEL_PATH = 'checkpoints/200checkpoint_epoch100.pth'
+    TEST_DATA_PATH = 'data/original_standard_labels/test'
+    LARGEST_SIZE = 200
+    ########
 
     device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-    logging.info(f'Loading model {model}')
+    logging.info(f'Loading model {MODEL_PATH}')
     logging.info(f'Using device {device}')
 
     net.to(device=device)
-    state_dict = torch.load(model, map_location=device)
+    state_dict = torch.load(MODEL_PATH, map_location=device)
 
     mask_values = state_dict.pop('mask_values', [0, 1, 2])
     net.load_state_dict(state_dict)
 
     logging.info('Model loaded!')
 
-    test_data_path = 'data/standard_labels/val'
-    test_dataset = DataSet(test_data_path, no_midpoint=True, filter_level=0)
+    test_dataset = DataSet(TEST_DATA_PATH, no_midpoint=True, filter_level=0, largest_size=LARGEST_SIZE)
     test_dataloader = DataLoader(test_dataset, batch_size=1, shuffle=False)
 
-    print(evaluate(net, test_dataloader, device, False, 5))
+    wandb.login(key=wandb_key)
+    experiment = wandb.init(project='U-Net-evaluate', resume='allow', anonymous='allow', magic=True)
+    dice, rmse, images = evaluate(net, test_dataloader, device, False, 5)
+
+    wandb.log({'dice score': dice, 'rmse score': rmse, **images})
     
-# @torch.inference_mode()
-# def evaluate_multiple_radial(net, dataloader, device, amp, mask_sigma):
-#     net.eval()
-#     num_val_batches = len(dataloader)
-#     dice_score = 0
-
-#     # iterate over the validation set
-#     with torch.autocast(device.type if device.type != 'mps' else 'cpu', enabled=amp):
-#         for images, _, labels in tqdm(dataloader, total=num_val_batches, desc='Validation round', unit='batch', leave=False):
-#             images = images[:, None, :, :]
-#             mask_true = convert_labels_to_radial_masks(labels, 200, 200, mask_sigma) # radius
-
-#             # move images and labels to correct device and type
-#             images = images.to(device=device, dtype=torch.float32, memory_format=torch.channels_last)
-#             mask_true = mask_true.to(device=device, dtype=torch.long)
-
-#             # predict the mask
-#             mask_pred = net(images)
-
-#             if net.n_classes == 1:
-#                 assert mask_true.min() >= 0 and mask_true.max() <= 1, 'True mask indices should be in [0, 1]'
-#                 mask_pred = (F.sigmoid(mask_pred) > 0.5).float()
-#                 # compute the Dice score
-#                 dice_score += dice_coeff(mask_pred, mask_true, reduce_batch_first=False)
-#             else:
-#                 assert mask_true.min() >= 0 and mask_true.max() < net.n_classes, 'True mask indices should be in [0, n_classes]'
-#                 # convert to one-hot format
-#                 # print(mask_true.size())
-#                 # print(mask_pred.argmax(dim=1).size())
-#                 # print(mask_pred.argmax(dim=1))
-#                 mask_true = F.one_hot(mask_true.argmax(dim=1), net.n_classes).permute(0, 3, 1, 2).float()
-#                 mask_pred = F.one_hot(mask_pred.argmax(dim=1), net.n_classes).permute(0, 3, 1, 2).float()
-#                 # compute the Dice score, ignoring background
-#                 dice_score += multiclass_dice_coeff(mask_pred[:, 1:], mask_true[:, 1:], reduce_batch_first=False)
-
-#     net.train()
-#     return dice_score / max(num_val_batches, 1)
