@@ -5,3 +5,5 @@ model_tests/
 non_unet/
 wandb/
 *.png
+
+.env
