@@ -1,0 +1,7 @@
+archive/
+checkpoints/
+data/
+model_tests/
+non_unet/
+wandb/
+*.png
