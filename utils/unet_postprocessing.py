@@ -124,7 +124,7 @@ if __name__ == "__main__":
     mask1 = convert_labels_to_single_mask(labels1, 256, 256, 3) # sigma
     mask2 = convert_labels_to_single_mask(labels2, 256, 256, 3)
 
-    generate_combined_mask(mask1[0, 0], mask2[0, 0], torch.rand(1, 1, 256, 256), 3)
+    generate_keypoint_image(mask1[0, 0], mask2[0, 0], torch.rand(1, 1, 256, 256), 3)
     # print(mask1.shape)
     # # Calculate the number of classes
     # num_classes = len(np.unique(mask1))

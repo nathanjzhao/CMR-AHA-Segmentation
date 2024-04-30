@@ -23,7 +23,7 @@ from utils.parse_arguments import parse_arguments
 from utils.dataset import DataSet, SLICES
 from utils.unet_preprocessing import convert_labels_to_single_mask
 from utils.dice_score import dice_loss, tversky_loss
-from utils.unet_postprocessing import generate_combined_mask, generate_keypoint_image, get_centroids
+from utils.unet_postprocessing import generate_keypoint_image, get_centroids
 from evaluate import evaluate
 
 from utils.models.RegressionCNN import *
@@ -107,7 +107,7 @@ filter_level = 0
 record_spread = False
 
 batch_size = 8
-num_epochs = 200
+num_epochs = 100
 # num_features = 8
 # relu = False
 # dropout = 0.5
@@ -148,8 +148,8 @@ def train_model():
   # TEST_NAME = f"lr_{lr}_wd_{weight_decay}_m_{momentum}_b_{bilinear}_mid_{no_midpoint}_s_{sigma}"
   # print(TEST_NAME)
       
-  train_dataset = DataSet(data_path, degrees=rotation, translate=translation, scale=scale, contrast=contrast, flipping=flipping, no_midpoint=no_midpoint, filter_level=filter_level)
-  val_dataset = DataSet(val_data_path, no_midpoint=no_midpoint, filter_level=filter_level)
+  train_dataset = DataSet(data_path, degrees=rotation, translate=translation, scale=scale, contrast=contrast, flipping=flipping, no_midpoint=no_midpoint, filter_level=filter_level, largest_size=200)
+  val_dataset = DataSet(val_data_path, no_midpoint=no_midpoint, filter_level=filter_level, largest_size=200)
   n_train, n_val = len(train_dataset), len(val_dataset)
 
   train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
@@ -303,5 +303,5 @@ def train_model():
               logging.info(f'Checkpoint {epoch} saved!')
 
 wandb.login(key=wandb_key)
-sweep_id = wandb.sweep(sweep_config, project="U-Net-4.29-sweep-original-labels")
+sweep_id = wandb.sweep(sweep_config, project="U-Net-4.30-sweep-original-labels")
 wandb.agent(sweep_id, train_model, count=30)

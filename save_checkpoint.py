@@ -23,7 +23,7 @@ from utils.parse_arguments import parse_arguments
 from utils.dataset import DataSet, SLICES
 from utils.unet_preprocessing import convert_labels_to_single_mask
 from utils.dice_score import dice_loss, tversky_loss
-from utils.unet_postprocessing import generate_combined_mask, get_centroids
+from utils.unet_postprocessing import generate_keypoint_image, get_centroids
 from evaluate import evaluate
 
 from utils.models.RegressionCNN import *
@@ -265,6 +265,8 @@ def train_model():
 
                             logging.info('Validation Dice score: {}'.format(val_score))
                             try:
+                                keypoint_file_path = generate_keypoint_image(true_masks[0], masks_pred.argmax(dim=1)[0], images[0], unet.n_classes)
+
                                 experiment.log({
                                     'learning rate': optimizer.param_groups[0]['lr'],
                                     'validation score': val_score,
@@ -273,14 +275,13 @@ def train_model():
                                     'train masks': {
                                         'true': wandb.Image(true_masks[0].float().cpu()),
                                         'pred': wandb.Image(masks_pred.argmax(dim=1)[0].float().cpu()),
+                                        'keypoints': wandb.Image(keypoint_file_path)
                                     },
                                     'step': global_step,
                                     'epoch': epoch,
                                     **histograms,
                                     **percentile_images
                                 })
-
-                                generate_combined_mask(true_masks[0], masks_pred.argmax(dim=1)[0], images[0], unet.n_classes, experiment)
                             except Exception as e:
                                 print(f"An error occurred: {e}")
 
