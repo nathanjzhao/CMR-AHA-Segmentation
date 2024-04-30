@@ -28,15 +28,18 @@ def generate_combined_mask(mask_true, mask_pred, image, num_classes, experiment,
     fig, ax = plt.subplots()
 
     # Display the image
-    ax.imshow(image[0, 0].float().cpu().numpy(), cmap='gray')
+    ax.imshow(image[0].float().cpu().numpy(), cmap='gray')
 
+    # Create a colormap
+    cmap = plt.cm.get_cmap('hsv', num_classes)
+    
     # Plot the centroids of the true mask
     for value, centroid in centroids_true.items():
-        ax.scatter(*centroid, color='blue', label='True')
+        ax.scatter(*centroid, color=cmap(value), label=f'GT {value}')
     
     # Plot the centroids of the predicted mask
     for value, centroid in centroids_pred.items():
-        ax.scatter(*centroid, color='red', label='Predicted')
+        ax.scatter(*centroid, color=cmap(value), label=f'Prediced {value}')
 
     # Add a legend
     ax.legend()

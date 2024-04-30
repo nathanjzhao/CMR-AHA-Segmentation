@@ -281,8 +281,8 @@ def train_model():
                                 })
 
                                 generate_combined_mask(true_masks[0], masks_pred.argmax(dim=1)[0], images[0], unet.n_classes, experiment)
-                            except:
-                                pass
+                            except Exception as e:
+                                print(f"An error occurred: {e}")
 
           
           if save_checkpoint:

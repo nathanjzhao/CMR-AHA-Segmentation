@@ -67,6 +67,7 @@ class DataSet(Dataset):
         tx = t[0]
         ty = t[1]
 
+        print()
         cx = image.size[0] / 2
         cy = image.size[1] / 2
 
