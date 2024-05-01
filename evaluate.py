@@ -11,7 +11,7 @@ from unet.unet_model import UNet
 from utils.dataset import DataSet
 from torch.utils.data import DataLoader
 from utils.unet_preprocessing import convert_labels_to_radial_masks, convert_labels_to_single_mask
-from utils.unet_postprocessing import calculate_rmse, compile_masks, generate_keypoint_image
+from utils.unet_postprocessing import calculate_rmse, calculate_rmse_from_multiple_masks, compile_masks, generate_keypoint_image
 from utils.dice_score import multiclass_dice_coeff, dice_coeff, dice_loss
 
 
@@ -54,7 +54,7 @@ def evaluate(net, dataloader, device, amp, mask_sigma, percentiles=[1, 25, 50, 7
                 dice_score_total += dice_score
 
                 # only one batch, so [0] references image itself
-                rmse_score = calculate_rmse(mask_true[0][1:], mask_pred[0][1:], net.n_classes) # torch.Size([1, 3, 256, 256])
+                rmse_score = calculate_rmse_from_multiple_masks(mask_true[0][1:], mask_pred[0][1:], net.n_classes) # torch.Size([1, 3, 256, 256])
                 rmse_score_total += rmse_score
 
                 scores.append({"dice_score" : dice_score, "mse_score" : rmse_score, "mask_true" : mask_true, "mask_pred" : mask_pred, "image" : images})
@@ -92,7 +92,7 @@ def evaluate(net, dataloader, device, amp, mask_sigma, percentiles=[1, 25, 50, 7
         }
 
     net.train()
-    return dice_score / max(num_val_batches, 1), rmse_score / max(num_val_batches, 1), percentile_images
+    return dice_score_total / max(num_val_batches, 1), rmse_score_total / max(num_val_batches, 1), percentile_images
 
 if __name__ == "__main__":
 

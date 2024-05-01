@@ -303,5 +303,5 @@ def train_model():
               logging.info(f'Checkpoint {epoch} saved!')
 
 wandb.login(key=wandb_key)
-sweep_id = wandb.sweep(sweep_config, project="U-Net-4.30-sweep-original-labels")
+sweep_id = wandb.sweep(sweep_config, project="U-Net-4.30-sweep-original-labels-mse-fix")
 wandb.agent(sweep_id, train_model, count=30)

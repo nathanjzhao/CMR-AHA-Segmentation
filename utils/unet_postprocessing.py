@@ -81,7 +81,7 @@ def calculate_rmse(mask_true, mask_pred, num_classes):
         centroid_pred = centroids_pred.get(value, (0, 0))
         
         squared_distance = (centroid_true[0] - centroid_pred[0])**2 + (centroid_true[1] - centroid_pred[1])**2
-        squared_distances.append(np.sqrt(squared_distance))
+        squared_distances.append(squared_distance)
 
     # Calculate the mean squared error
     mse = np.mean(squared_distances)
