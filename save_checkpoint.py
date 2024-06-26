@@ -29,6 +29,8 @@ from evaluate import evaluate
 from utils.models.RegressionCNN import *
 from utils.models.Resnet import *
 
+from .config import *
+
 load_dotenv()
 wandb_key = os.getenv('WANDB_API_KEY')
 

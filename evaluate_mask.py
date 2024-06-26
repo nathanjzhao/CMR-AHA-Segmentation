@@ -26,9 +26,12 @@ def evaluate(net, dataloader, device, amp, mask_sigma, percentiles=[1, 25, 50, 7
 
     # iterate over the validation set
     with torch.autocast(device.type if device.type != 'mps' else 'cpu', enabled=amp):
-        for images, _, labels in tqdm(dataloader, total=num_val_batches, desc='Validation round', unit='batch', leave=False):
-            images = images[:, None, :, :]
-            mask_true = convert_labels_to_single_mask(labels, images.shape[2], images.shape[3], mask_sigma) # radius
+        for images, heart_mask, _, labels in dataloader:
+            images = images[:, None, :, :] # to match input channels
+            point_masks = convert_labels_to_single_mask(labels, images.shape[2], images.shape[3], mask_sigma) # radius
+
+            non_overlap_mask = (heart_mask == 0) 
+            mask_true = point_masks * non_overlap_mask + (net.n_classes - 1) * ~non_overlap_mask # combined mask
 
             # move images and labels to correct device and type
             images = images.to(device=device, dtype=torch.float32, memory_format=torch.channels_last)

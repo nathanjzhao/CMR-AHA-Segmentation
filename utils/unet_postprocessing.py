@@ -68,7 +68,7 @@ def compile_masks(mask_true, num_classes):
     return compiled_mask
 
 
-def calculate_rmse(mask_true, mask_pred, num_classes):
+def calculate_mse(mask_true, mask_pred, num_classes):
     # Calculate the centroids of the true labels and the predicted labels
     centroids_true = get_centroids(mask_true, num_classes)
     centroids_pred = get_centroids(mask_pred, num_classes)
@@ -88,11 +88,11 @@ def calculate_rmse(mask_true, mask_pred, num_classes):
 
     return mse
 
-def calculate_rmse_from_multiple_masks(true_masks, pred_masks, num_classes):
+def calculate_mse_from_multiple_masks(true_masks, pred_masks, num_classes):
     # Calculate the mean squared error between the true masks and the predicted masks
     total_mse = 0
     for true_mask, pred_mask in zip(true_masks, pred_masks):
-        mse = calculate_rmse(true_mask, pred_mask, num_classes)
+        mse = calculate_mse(true_mask, pred_mask, num_classes)
         total_mse += mse
 
     return total_mse / len(true_masks)
@@ -130,7 +130,7 @@ if __name__ == "__main__":
     # num_classes = len(np.unique(mask1))
 
     # # Calculate the MSE between the mask and itself
-    # rmse = calculate_rmse(mask1, mask2, num_classes)
+    # mse = calculate_mse(mask1, mask2, num_classes)
 
-    # print(f"The MSE between the mask1 and mask2 is {rmse}.")
+    # print(f"The MSE between the mask1 and mask2 is {mse}.")
 
