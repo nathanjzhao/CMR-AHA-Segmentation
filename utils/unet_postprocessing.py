@@ -3,7 +3,8 @@ import torch
 import matplotlib.pyplot as plt
 import matplotlib.lines as mlines
 import tempfile
-import wandb
+import torch
+from scipy.spatial.distance import directed_hausdorff
 
 def get_centroids(mask, num_classes):
     centroids = {}
@@ -89,13 +90,48 @@ def calculate_mse(mask_true, mask_pred, num_classes):
     return mse
 
 def calculate_mse_from_multiple_masks(true_masks, pred_masks, num_classes):
-    # Calculate the mean squared error between the true masks and the predicted masks
+    # Go through different GT/Pred pairings
     total_mse = 0
     for true_mask, pred_mask in zip(true_masks, pred_masks):
         mse = calculate_mse(true_mask, pred_mask, num_classes)
         total_mse += mse
 
     return total_mse / len(true_masks)
+
+
+def hausdorff_distance(mask1, mask2):
+    # Check if the inputs are PyTorch tensors and on a CUDA device
+    if torch.is_tensor(mask1) and mask1.is_cuda:
+        mask1 = mask1.cpu()
+    if torch.is_tensor(mask2) and mask2.is_cuda:
+        mask2 = mask2.cpu()
+    
+    # Convert tensors to NumPy arrays if they are not already
+    if torch.is_tensor(mask1):
+        mask1 = mask1.numpy()
+    if torch.is_tensor(mask2):
+        mask2 = mask2.numpy()
+    # Convert masks to sets of coordinates
+    coords1 = np.argwhere(mask1)
+    coords2 = np.argwhere(mask2)
+    
+    # Calculate directed Hausdorff distances
+    forward_hdist = directed_hausdorff(coords1, coords2)[0]
+    backward_hdist = directed_hausdorff(coords2, coords1)[0]
+    
+    # Return the max of the two directed distances
+    return max(forward_hdist, backward_hdist)
+
+# def calculate_hausdorff_from_multiple_masks(true_masks, pred_masks):
+#     total_hausdorff = 0
+#     for true_mask, pred_mask in zip(true_masks, pred_masks):
+#         hausdorff = calculate_hausdorff_from_multiple_masks(true_mask, pred_mask)
+#         total_hausdorff += hausdorff
+
+#     return total_hausdorff / len(true_masks)
+
+
+
 
 if __name__ == "__main__":
     from unet_preprocessing import convert_labels_to_single_mask

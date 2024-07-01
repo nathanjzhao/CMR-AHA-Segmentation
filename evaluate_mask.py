@@ -11,7 +11,7 @@ from unet.unet_model import UNet
 from utils.dataset import DataSet
 from torch.utils.data import DataLoader
 from utils.unet_preprocessing import convert_labels_to_radial_masks, convert_labels_to_single_mask
-from utils.unet_postprocessing import calculate_mse, calculate_mse_from_multiple_masks, compile_masks, generate_keypoint_image
+from utils.unet_postprocessing import calculate_mse, calculate_mse_from_multiple_masks, compile_masks, generate_keypoint_image, hausdorff_distance
 from utils.dice_score import multiclass_dice_coeff, dice_coeff, dice_loss
 
 
@@ -22,6 +22,7 @@ def evaluate(net, dataloader, device, amp, mask_sigma, percentiles=[1, 25, 50, 7
     num_val_batches = len(dataloader)
     dice_score_total = 0
     mse_score_total = 0
+    hausdorff_score_total = 0
     scores = []
 
     # iterate over the validation set
@@ -56,11 +57,14 @@ def evaluate(net, dataloader, device, amp, mask_sigma, percentiles=[1, 25, 50, 7
                 dice_score = multiclass_dice_coeff(mask_pred[:, 1:], mask_true[:, 1:], reduce_batch_first=False)
                 dice_score_total += dice_score
 
-                # only one batch, so [0] references image itself
-                mse_score = calculate_mse_from_multiple_masks(mask_true[0][1:], mask_pred[0][1:], net.n_classes) # torch.Size([1, 3, 256, 256])
+                # only one batch during evaluation, so [0] references image itself
+                mse_score = calculate_mse_from_multiple_masks(mask_true[0][1:-1], mask_pred[0][1:-1], net.n_classes - 1) # torch.Size([1, 3, 256, 256])
                 mse_score_total += mse_score
 
-                scores.append({"dice_score" : dice_score, "mse_score" : mse_score, "mask_true" : mask_true, "mask_pred" : mask_pred, "image" : images})
+                hausdorff_score = hausdorff_distance(mask_true[0][-1], mask_pred[0][-1])
+                hausdorff_score_total += hausdorff_score
+
+                scores.append({"dice_score" : dice_score, "mse_score" : mse_score, "hausdorff_score" : hausdorff_score, "mask_true" : mask_true, "mask_pred" : mask_pred, "image" : images})
    
     # Calculate percentile scores
     dice_scores = [score['dice_score'].cpu() for score in scores]
@@ -82,20 +86,23 @@ def evaluate(net, dataloader, device, amp, mask_sigma, percentiles=[1, 25, 50, 7
         mask_true_compiled = compile_masks(mask_true[0], net.n_classes)
         mask_pred_compiled = compile_masks(mask_pred[0], net.n_classes)
 
-        keypoint_file_path = generate_keypoint_image(mask_true_compiled, mask_pred_compiled, image[0], net.n_classes)
+        keypoint_file_path = generate_keypoint_image(mask_true_compiled[:, :-1], mask_pred_compiled[:, :-1], image[0], net.n_classes - 1)
 
         # Store the masks and image in the results dictionary under the percentile key
         percentile_images[f'validation {percentiles[i]}th percentile'] = {
+            'masks_panel': [wandb.Image(mask_true_compiled), wandb.Image(mask_pred_compiled), wandb.Image(image[0, 0].float().cpu())],
             'mask_true': wandb.Image(mask_true_compiled),
             'mask_pred': wandb.Image(mask_pred_compiled),
             'mask_pred_anterior': wandb.Image(mask_pred[0, 1].float().cpu()),
             'mask_pred_inferior': wandb.Image(mask_pred[0, 2].float().cpu()),
+            'mask_pred_mask': wandb.Image(mask_pred[0, 3].float().cpu()),
             'image': wandb.Image(image[0, 0].float().cpu()),
             'keypoints': wandb.Image(keypoint_file_path)
         }
 
     net.train()
-    return dice_score_total / max(num_val_batches, 1), mse_score_total / max(num_val_batches, 1), percentile_images
+    N = max(num_val_batches, 1)
+    return dice_score_total / N, mse_score_total / N, hausdorff_score_total / N, percentile_images
 
 if __name__ == "__main__":
 

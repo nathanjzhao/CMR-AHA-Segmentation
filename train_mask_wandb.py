@@ -28,7 +28,7 @@ from evaluate_mask import evaluate
 
 from utils.models.RegressionCNN import *
 from utils.models.Resnet import *
-from config import *
+from config_mask import *
 
 load_dotenv()
 wandb_key = os.getenv('WANDB_API_KEY')
@@ -183,7 +183,7 @@ def train_model():
                                     if not (torch.isinf(value.grad) | torch.isnan(value.grad)).any():
                                         histograms['Gradients/' + tag] = wandb.Histogram(value.grad.data.cpu())
                                 
-                                val_score, mse_score, percentile_images = evaluate(unet, val_dataloader, device, amp, sigma)
+                                val_score, mse_score, hausdorff_score, percentile_images = evaluate(unet, val_dataloader, device, amp, sigma)
                                 scheduler.step(val_score)
 
                                 logging.info('Validation Dice score: {}'.format(val_score))
@@ -194,6 +194,7 @@ def train_model():
                                         'learning rate': optimizer.param_groups[0]['lr'],
                                         'validation score': val_score,
                                         'mse score': mse_score,
+                                        'hausdorff score': hausdorff_score,
                                         'images': wandb.Image(images[0].cpu()),
                                         'train masks': {
                                             'true': wandb.Image(mask_true[0].float().cpu()),
@@ -215,5 +216,5 @@ def train_model():
                 logging.info(f'Checkpoint {epoch} saved!')
 
 wandb.login(key=wandb_key)
-sweep_id = wandb.sweep(sweep_config, project="U-Net-heart-mask-included")
+sweep_id = wandb.sweep(sweep_config, project="U-Net-heart-mask-6.30-test")
 wandb.agent(sweep_id, train_model, count=30)
