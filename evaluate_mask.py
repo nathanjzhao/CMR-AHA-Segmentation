@@ -11,7 +11,7 @@ from unet.unet_model import UNet
 from utils.dataset import DataSet
 from torch.utils.data import DataLoader
 from utils.unet_preprocessing import convert_labels_to_radial_masks, convert_labels_to_single_mask
-from utils.unet_postprocessing import calculate_mse, calculate_mse_from_multiple_masks, compile_masks, generate_keypoint_image, hausdorff_distance
+from utils.unet_postprocessing import calculate_mse, calculate_mse_from_multiple_masks, compile_masks, generate_keypoint_image, hausdorff_distance, make_contours_then_hausdorff
 from utils.dice_score import multiclass_dice_coeff, dice_coeff, dice_loss
 
 
@@ -61,7 +61,7 @@ def evaluate(net, dataloader, device, amp, mask_sigma, percentiles=[1, 25, 50, 7
                 mse_score = calculate_mse_from_multiple_masks(mask_true[0][1:-1], mask_pred[0][1:-1], net.n_classes - 1) # torch.Size([1, 3, 256, 256])
                 mse_score_total += mse_score
 
-                hausdorff_score = hausdorff_distance(mask_true[0][-1], mask_pred[0][-1])
+                hausdorff_score = make_contours_then_hausdorff(mask_true[0][-1], mask_pred[0][-1])
                 hausdorff_score_total += hausdorff_score
 
                 scores.append({"dice_score" : dice_score, "mse_score" : mse_score, "hausdorff_score" : hausdorff_score, "mask_true" : mask_true, "mask_pred" : mask_pred, "image" : images})
@@ -86,7 +86,7 @@ def evaluate(net, dataloader, device, amp, mask_sigma, percentiles=[1, 25, 50, 7
         mask_true_compiled = compile_masks(mask_true[0], net.n_classes)
         mask_pred_compiled = compile_masks(mask_pred[0], net.n_classes)
 
-        keypoint_file_path = generate_keypoint_image(mask_true_compiled[:, :-1], mask_pred_compiled[:, :-1], image[0], net.n_classes - 1)
+        keypoint_file_path = generate_keypoint_image(mask_true_compiled, mask_pred_compiled, image[0], net.n_classes - 1)
 
         # Store the masks and image in the results dictionary under the percentile key
         percentile_images[f'validation {percentiles[i]}th percentile'] = {

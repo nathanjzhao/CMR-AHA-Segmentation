@@ -44,7 +44,7 @@ sweep_config = {
         },
         "CE": {
             "min": 0.7,
-            "max": 0.95,
+            "max": 1.0,
         },
         "tversky_beta": {
             "min": 0.2,
@@ -112,7 +112,7 @@ data_path = './data/original_standard_labels/train'
 val_data_path = './data/original_standard_labels/val'
 
 checkpoint_path = Path('./checkpoints/')
-save_checkpoint = False
+save_checkpoint = True
 
 random_seed = 42
 results_path = './model_tests'

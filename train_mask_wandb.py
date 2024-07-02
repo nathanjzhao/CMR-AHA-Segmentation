@@ -209,7 +209,7 @@ def train_model():
                                 except Exception as e:
                                     print(f"An error occurred: {e}")
 
-            if save_checkpoint:
+            if save_checkpoint and epoch % 10 == 0:
                 Path(checkpoint_path).mkdir(parents=True, exist_ok=True)
                 state_dict = unet.state_dict()
                 torch.save(state_dict, str(checkpoint_path / 'checkpoint_epoch{}.pth'.format(epoch)))

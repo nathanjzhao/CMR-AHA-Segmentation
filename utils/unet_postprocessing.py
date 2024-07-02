@@ -13,7 +13,7 @@ def get_centroids(mask, num_classes):
     if mask.is_cuda:
         mask = mask.cpu()
 
-    for value in range(1, num_classes + 1):
+    for value in range(1, num_classes):
         coords = np.where(mask == value)  # Get the coordinates where mask == value
         if coords[0].size > 0 and coords[1].size > 0:  # Check if the class exists in the mask
             centroid = (np.mean(coords[1]), np.mean(coords[0]))  # Calculate the centroid
@@ -32,6 +32,7 @@ def generate_keypoint_image(mask_true, mask_pred, image, num_classes):
     # Display the image
     ax.imshow(image[0].float().cpu().numpy(), cmap='gray')
 
+    # print(centroids_true)
     # Create a colormap
     cmap = plt.cm.get_cmap('hsv', num_classes)
     
@@ -98,29 +99,122 @@ def calculate_mse_from_multiple_masks(true_masks, pred_masks, num_classes):
 
     return total_mse / len(true_masks)
 
+def Myocardial_Mask_Contour_Extractor(myocardial_mask):
+    """
+    ########## Definition Inputs ##################################################################################################################
+    # myocardial_mask       : Left or right ventricular binary mask (3D - [rows, columns, slices])
+    # slice_number          : Index of slice to evaluate.
+    ########## Definition Outputs #################################################################################################################
+    # epicardial_contour    : Contour of the epicardium (outtermost layer) for current slice.
+    # endocardial_contour   : Contour of the endocardium (innermost layer) for current slice.
+    ########## Notes ##############################################################################################################################
+    # This fucntion has been archived. Please use the more accurate definition named 'Myocardial_Mask_Contour_Extraction'.
+    """
+    ########## Definition Information #############################################################################################################
+    ### Written by Tyler E. Cork, tyler.e.cork@gmail.com
+    ### Cardiac Magnetic Resonance (CMR) Group, Leland Stanford Jr University, 2021
+    ########## Import Modules #####################################################################################################################
+    import numpy   as     np                                                    # Import numpy module
+    from   skimage import measure                                               # Import measure from skimage module
+    import cv2                                                                  # Import open CV module
+    import warnings                                                             # Import warning module
+    ########## Print Warning ######################################################################################################################
+    warnings.warn('This fucntion has been archived. It is reccomended to use the more accurate definition named myocardial_mask_contour_extraction.')
+    ########## Initalize data #####################################################################################################################
+    rows                = myocardial_mask.shape[0]                              # Number of rows
+    columns             = myocardial_mask.shape[1]                              # Number of columns
+    binary              = (myocardial_mask * 255).to(torch.uint8).cpu().numpy()   # Make image compadible with OpenCV
+    epicardial_contour  = np.zeros(([rows, columns]))                           # Initialize epicardium
+    endocardial_contour = np.zeros(([rows, columns]))                           # Initialize endocardium
+    ########## Detect edges from input myocardial mask ############################################################################################
+    if np.mean(binary) != 0:                                                    # If slice contains myocardium ...
+        edges      = cv2.Canny(binary, 0 , 2)                                       # Edge detection with Canny filter
+        all_labels = measure.label(edges)                                           # Label edges detected
+        if 2 in all_labels:                                                         # If 2 labels were detected ...
+            # print('Slice contains endocardium and epicardium.' )            # Print information statment about input data
+            epicardial_contour  = all_labels == 1                                       # Identify epicardium contour
+            endocardial_contour = all_labels == 2                                       # Identify endocardium contour
+        # else:                                                                       # Otherwise only 1 label was detected and slice is ignored
+            # print('Slice contains only epicardium.')                       # Print information statment about input data
+    # else:                                                                       # Otherwise myocardium was not detected and slice is ignored
+        # print('Slice contains no myocardium.')                        # Print information statment about input data
+    return [epicardial_contour, endocardial_contour]
 
-def hausdorff_distance(mask1, mask2):
-    # Check if the inputs are PyTorch tensors and on a CUDA device
-    if torch.is_tensor(mask1) and mask1.is_cuda:
-        mask1 = mask1.cpu()
-    if torch.is_tensor(mask2) and mask2.is_cuda:
-        mask2 = mask2.cpu()
+def hausdorff_distance(a_points, b_points):
+    """Calculate the Hausdorff distance between nonzero elements of given images.
+    The Hausdorff distance [1]_ is the maximum distance between any point on
+    ``image0`` and its nearest point on ``image1``, and vice-versa.
+    Parameters
+    ----------
+    image0, image1 : ndarray
+        Arrays where ``True`` represents a point that is included in a
+        set of points. Both arrays must have the same shape.
+    Returns
+    -------
+    distance : float
+        The Hausdorff distance between coordinates of nonzero pixels in
+        ``image0`` and ``image1``, using the Euclidian distance.
+    References
+    ----------
+    .. [1] http://en.wikipedia.org/wiki/Hausdorff_distance
+    Examples
+    --------
+    >>> points_a = (3, 0)
+    >>> points_b = (6, 0)
+    >>> shape = (7, 1)
+    >>> image_a = np.zeros(shape, dtype=bool)
+    >>> image_b = np.zeros(shape, dtype=bool)
+    >>> image_a[points_a] = True
+    >>> image_b[points_b] = True
+    >>> hausdorff_distance(image_a, image_b)
+    3.0
+    """
+    from scipy.spatial import cKDTree
+#     a_points = np.transpose(np.nonzero(image0))
+#     b_points = np.transpose(np.nonzero(image1))
+
+    # Handle empty sets properly:
+    # - if both sets are empty, return zero
+    # - if only one set is empty, return infinity
+    if len(a_points) == 0:
+        return 0 if len(b_points) == 0 else np.inf
+    elif len(b_points) == 0:
+        return np.inf
+
+    return max(max(cKDTree(a_points).query(b_points, k=1)[0]),
+               max(cKDTree(b_points).query(a_points, k=1)[0]))
+
+def make_contours_then_hausdorff(mask_true, mask_pred):
+
+    [UNet_Epi, UNet_Endo] = Myocardial_Mask_Contour_Extractor(mask_pred) 
+    [GT_Epi,   GT_Endo]   = Myocardial_Mask_Contour_Extractor(mask_true)
+
+    epi_dist  = hausdorff_distance(GT_Epi,  UNet_Epi)
+    endo_dist  = hausdorff_distance(GT_Endo, UNet_Endo)
+    return (epi_dist + endo_dist) / 2
+
+# def hausdorff_distance(mask1, mask2):
+#     # Check if the inputs are PyTorch tensors and on a CUDA device
+#     if torch.is_tensor(mask1) and mask1.is_cuda:
+#         mask1 = mask1.cpu()
+#     if torch.is_tensor(mask2) and mask2.is_cuda:
+#         mask2 = mask2.cpu()
     
-    # Convert tensors to NumPy arrays if they are not already
-    if torch.is_tensor(mask1):
-        mask1 = mask1.numpy()
-    if torch.is_tensor(mask2):
-        mask2 = mask2.numpy()
-    # Convert masks to sets of coordinates
-    coords1 = np.argwhere(mask1)
-    coords2 = np.argwhere(mask2)
+#     # Convert tensors to NumPy arrays if they are not already
+#     if torch.is_tensor(mask1):
+#         mask1 = mask1.numpy()
+#     if torch.is_tensor(mask2):
+#         mask2 = mask2.numpy()
+#     # Convert masks to sets of coordinates
+#     coords1 = np.argwhere(mask1)
+#     coords2 = np.argwhere(mask2)
     
-    # Calculate directed Hausdorff distances
-    forward_hdist = directed_hausdorff(coords1, coords2)[0]
-    backward_hdist = directed_hausdorff(coords2, coords1)[0]
+#     # Calculate directed Hausdorff distances
+#     forward_hdist = directed_hausdorff(coords1, coords2)[0]
+#     backward_hdist = directed_hausdorff(coords2, coords1)[0]
     
-    # Return the max of the two directed distances
-    return max(forward_hdist, backward_hdist)
+#     # Return the max of the two directed distances
+#     return max(forward_hdist, backward_hdist)
 
 # def calculate_hausdorff_from_multiple_masks(true_masks, pred_masks):
 #     total_hausdorff = 0
