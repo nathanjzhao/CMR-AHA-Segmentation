@@ -1,10 +1,13 @@
+import io
 import numpy as np
 import torch
 import matplotlib.pyplot as plt
 import matplotlib.lines as mlines
 import tempfile
 import torch
-from scipy.spatial.distance import directed_hausdorff
+import numpy as np
+import matplotlib.pyplot as plt
+from PIL import Image
 
 def get_centroids(mask, num_classes):
     centroids = {}
@@ -68,6 +71,47 @@ def compile_masks(mask_true, num_classes):
     compiled_mask = weighted_masks.max(dim=0)[0]
 
     return compiled_mask
+
+def create_overlap_figure(red_mask, blue_mask):
+    # Ensure both masks have the same shape
+    if red_mask.shape != blue_mask.shape:
+        raise ValueError("Both masks must have the same dimensions")
+
+    # Create a new RGB array
+    result = np.zeros((*red_mask.shape, 3))
+
+    # Move red_mask and blue_mask to CPU and convert to NumPy arrays
+    red_mask_np = red_mask.cpu().numpy()
+    blue_mask_np = blue_mask.cpu().numpy()
+
+    # Set red channel
+    result[:, :, 0] = red_mask_np
+
+    # Set blue channel
+    result[:, :, 2] = blue_mask_np
+
+    # Calculate overlap (purple)
+    overlap = np.logical_and(red_mask_np, blue_mask_np)
+    result[:, :, 0] = np.maximum(result[:, :, 0], overlap)  # Red component of purple
+    result[:, :, 2] = np.maximum(result[:, :, 2], overlap)  # Blue component of purple
+
+    # Create the figure
+    # fig, ax = plt.subplots()
+    # ax.imshow(result)
+    # ax.axis('off')
+
+    # # Save the figure to a buffer
+    # buf = io.BytesIO()
+    # plt.savefig(buf, format='png', bbox_inches='tight', pad_inches=0)
+    # buf.seek(0)
+
+    # # Create a PIL image from the buffer
+    # img = Image.open(buf)
+
+    # # Close the figure to free memory
+    # plt.close(fig)
+
+    return result
 
 
 def calculate_mse(mask_true, mask_pred, num_classes):

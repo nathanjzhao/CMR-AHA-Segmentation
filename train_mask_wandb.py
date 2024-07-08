@@ -66,6 +66,9 @@ def train_model():
     val_dataloader = DataLoader(val_dataset, batch_size=1, shuffle=False)
 
 
+    best_val_score = 0
+    best_model_path = Path(checkpoint_path) / 'best_model.pth'
+
     # extra class for background
     unet = UNet(n_channels=1, n_classes=4 if no_midpoint else 5, bilinear=bilinear) # NOTE: more classes w/ heart mask included
     unet = unet.to(device)
@@ -187,6 +190,12 @@ def train_model():
                                 scheduler.step(val_score)
 
                                 logging.info('Validation Dice score: {}'.format(val_score))
+
+                                if val_score > best_val_score:
+                                    best_val_score = val_score
+                                    torch.save(unet.state_dict(), str(best_model_path))
+                                    logging.info(f'New best model saved with validation score: {val_score}')
+                                    
                                 try:
                                     keypoint_file_path = generate_keypoint_image(mask_true[0], mask_pred.argmax(dim=1)[0], images[0], unet.n_classes)
 
@@ -195,14 +204,14 @@ def train_model():
                                         'validation score': val_score,
                                         'mse score': mse_score,
                                         'hausdorff score': hausdorff_score,
-                                        'images': wandb.Image(images[0].cpu()),
-                                        'train masks': {
-                                            'true': wandb.Image(mask_true[0].float().cpu()),
-                                            'pred': wandb.Image(mask_pred.argmax(dim=1)[0].float().cpu()),
-                                            'keypoints': wandb.Image(keypoint_file_path)
-                                        },
-                                        'step': global_step,
-                                        'epoch': epoch,
+                                        # 'images': wandb.Image(images[0].cpu()),
+                                        # 'train masks': {
+                                        #     'true': wandb.Image(mask_true[0].float().cpu()),
+                                        #     'pred': wandb.Image(mask_pred.argmax(dim=1)[0].float().cpu()),
+                                        #     'keypoints': wandb.Image(keypoint_file_path)
+                                        # },
+                                        # 'step': global_step,
+                                        # 'epoch': epoch,
                                         **histograms,
                                         **percentile_images
                                     })
@@ -214,7 +223,15 @@ def train_model():
                 state_dict = unet.state_dict()
                 torch.save(state_dict, str(checkpoint_path / 'checkpoint_epoch{}.pth'.format(epoch)))
                 logging.info(f'Checkpoint {epoch} saved!')
+        
+    wandb.run.summary['best_val_score'] = best_val_score
 
 wandb.login(key=wandb_key)
-sweep_id = wandb.sweep(sweep_config, project="U-Net-heart-mask-6.30-test")
+sweep_id = wandb.sweep(sweep_config, project="U-Net-heart-mask-7.08-test")
 wandb.agent(sweep_id, train_model, count=30)
+
+best_run = wandb.Api().sweep(sweep_id).best_run()
+best_model_path = Path(checkpoint_path) / f'best_model_{best_run.name}.pth'
+best_run.file('best_model.pth').download(root=str(Path(checkpoint_path)), replace=True)
+os.rename(Path(checkpoint_path) / 'best_model.pth', best_model_path)
+print(f"Best model saved to {best_model_path}")
