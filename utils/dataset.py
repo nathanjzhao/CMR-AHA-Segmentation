@@ -145,8 +145,12 @@ class DataSet(Dataset):
         label = (label / pil_image.size[0]).flatten().to(torch.float32)
         NifTi = transforms.ToTensor()(NifTi)[0]
         
+        additional_data = []
+        if 'MD' in data and 'FA' in data:
+            additional_data.extend([data['MD'], data['FA']])
+            
         if pil_mask:
             Mask = transforms.ToTensor()(Mask)[0]
-            return NifTi, Mask, "Base", label
+            return (NifTi, Mask, label, *additional_data)
         else:
-            return NifTi, "Base", label
+            return (NifTi, label, *additional_data)

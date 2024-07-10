@@ -111,7 +111,7 @@ def train_model():
             unet.train()
             epoch_loss = 0
             with tqdm(total=n_train, desc=f'Epoch {epoch}/{num_epochs}', unit='img') as pbar:
-                for images, heart_mask, _, labels in train_dataloader:
+                for images, heart_mask, labels, _, _ in train_dataloader:
                     images = images[:, None, :, :] # to match input channels
                     point_masks = convert_labels_to_single_mask(labels, images.shape[2], images.shape[3], sigma) # radius
 
@@ -131,7 +131,7 @@ def train_model():
                         else:
                             CE_loss = criterion(mask_pred, mask_true)
                             
-                            wandb.log({'cross entropy loss': CE_loss})
+                            wandb.log({'train cross entropy loss': CE_loss})
                             loss = CE * CE_loss
 
                             # Only tversky/dice on non-background classes
@@ -144,7 +144,7 @@ def train_model():
                                     beta=tversky_beta
                                 )
                                 loss += (1 - CE) * tversky
-                                wandb.log({'tversky loss': tversky})
+                                wandb.log({'train tversky loss': tversky})
                             else:
                                 dice = dice_loss(
                                     F.softmax(mask_pred, dim=1)[:, 1:].float(),
@@ -153,7 +153,7 @@ def train_model():
                                 )
 
                                 loss += (1 - CE) * dice
-                                wandb.log({'dice loss': dice})
+                                wandb.log({'train dice loss': dice})
 
                     optimizer.zero_grad(set_to_none=True)
                     grad_scaler.scale(loss).backward()
@@ -172,7 +172,7 @@ def train_model():
                         'epoch': epoch
                     })
                     
-                    pbar.set_postfix(**{'loss (batch)': loss.item()})
+                    pbar.set_postfix(**{'train loss (batch)': loss.item()})
 
                     # Evaluation round
                     division_step = (n_train // (5 * batch_size)) # change variable for frequency
@@ -186,7 +186,7 @@ def train_model():
                                     if not (torch.isinf(value.grad) | torch.isnan(value.grad)).any():
                                         histograms['Gradients/' + tag] = wandb.Histogram(value.grad.data.cpu())
                                 
-                                val_score, mse_score, hausdorff_score, percentile_images = evaluate(unet, val_dataloader, device, amp, sigma)
+                                val_score, eval_wandb_logs = evaluate(unet, val_dataloader, device, amp, sigma)
                                 scheduler.step(val_score)
 
                                 logging.info('Validation Dice score: {}'.format(val_score))
@@ -202,8 +202,6 @@ def train_model():
                                     experiment.log({
                                         'learning rate': optimizer.param_groups[0]['lr'],
                                         'validation score': val_score,
-                                        'mse score': mse_score,
-                                        'hausdorff score': hausdorff_score,
                                         # 'images': wandb.Image(images[0].cpu()),
                                         # 'train masks': {
                                         #     'true': wandb.Image(mask_true[0].float().cpu()),
@@ -213,7 +211,7 @@ def train_model():
                                         # 'step': global_step,
                                         # 'epoch': epoch,
                                         **histograms,
-                                        **percentile_images
+                                        **eval_wandb_logs
                                     })
                                 except Exception as e:
                                     print(f"An error occurred: {e}")
@@ -226,12 +224,13 @@ def train_model():
         
     wandb.run.summary['best_val_score'] = best_val_score
 
+project_name = 'U-Net-heart-mask-7.10-more-test'
 wandb.login(key=wandb_key)
-sweep_id = wandb.sweep(sweep_config, project="U-Net-heart-mask-7.08-test")
+sweep_id = wandb.sweep(sweep_config, project=project_name)
 wandb.agent(sweep_id, train_model, count=30)
 
 best_run = wandb.Api().sweep(sweep_id).best_run()
 best_model_path = Path(checkpoint_path) / f'best_model_{best_run.name}.pth'
-best_run.file('best_model.pth').download(root=str(Path(checkpoint_path)), replace=True)
-os.rename(Path(checkpoint_path) / 'best_model.pth', best_model_path)
+best_run.file(f'best_model-{project_name}.pth').download(root=str(Path(checkpoint_path)), replace=True)
+os.rename(Path(checkpoint_path) / f'best_model-{project_name}.pth', best_model_path)
 print(f"Best model saved to {best_model_path}")

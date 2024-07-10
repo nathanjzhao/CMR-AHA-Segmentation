@@ -58,7 +58,7 @@ def generate_keypoint_image(mask_true, mask_pred, image, num_classes):
     with tempfile.NamedTemporaryFile(suffix='.png', delete=False) as f:
         fig.savefig(f.name)
         # Return the path to the file
-        return f.name
+        return f.name, centroids_true, centroids_pred
     
 def compile_masks(mask_true, num_classes):
     # Create a tensor of class numbers
@@ -72,46 +72,39 @@ def compile_masks(mask_true, num_classes):
 
     return compiled_mask
 
-def create_overlap_figure(red_mask, blue_mask):
+def create_overlap_figure(red_mask, blue_mask, image_np):
     # Ensure both masks have the same shape
     if red_mask.shape != blue_mask.shape:
         raise ValueError("Both masks must have the same dimensions")
 
     # Create a new RGB array
-    result = np.zeros((*red_mask.shape, 3))
+    overlaps = np.zeros((*red_mask.shape, 3))
 
     # Move red_mask and blue_mask to CPU and convert to NumPy arrays
     red_mask_np = red_mask.cpu().numpy()
     blue_mask_np = blue_mask.cpu().numpy()
 
     # Set red channel
-    result[:, :, 0] = red_mask_np
+    overlaps[:, :, 0] = red_mask_np
 
     # Set blue channel
-    result[:, :, 2] = blue_mask_np
+    overlaps[:, :, 2] = blue_mask_np
 
     # Calculate overlap (purple)
     overlap = np.logical_and(red_mask_np, blue_mask_np)
-    result[:, :, 0] = np.maximum(result[:, :, 0], overlap)  # Red component of purple
-    result[:, :, 2] = np.maximum(result[:, :, 2], overlap)  # Blue component of purple
+    overlaps[:, :, 0] = np.maximum(overlaps[:, :, 0], overlap)  # Red component of purple
+    overlaps[:, :, 2] = np.maximum(overlaps[:, :, 2], overlap)  # Blue component of purple
 
-    # Create the figure
-    # fig, ax = plt.subplots()
-    # ax.imshow(result)
-    # ax.axis('off')
+    # Overlay the masks on the image
+    image_np = (image_np - np.min(image_np)) / (np.max(image_np) - np.min(image_np))
+    if len(image_np.shape) == 2:  # if image is grayscale
+        image_np = np.stack((image_np,)*3, axis=-1)
 
-    # # Save the figure to a buffer
-    # buf = io.BytesIO()
-    # plt.savefig(buf, format='png', bbox_inches='tight', pad_inches=0)
-    # buf.seek(0)
+    overlaps_scaled = overlaps * 255
+    overlay_image_np = np.where(overlaps_scaled.sum(axis=-1, keepdims=True) != 0, overlaps_scaled, image_np * 255)
+    combined_image = Image.fromarray(overlay_image_np.astype(np.uint8))
 
-    # # Create a PIL image from the buffer
-    # img = Image.open(buf)
-
-    # # Close the figure to free memory
-    # plt.close(fig)
-
-    return result
+    return combined_image
 
 
 def calculate_mse(mask_true, mask_pred, num_classes):
@@ -236,39 +229,6 @@ def make_contours_then_hausdorff(mask_true, mask_pred):
     epi_dist  = hausdorff_distance(GT_Epi,  UNet_Epi)
     endo_dist  = hausdorff_distance(GT_Endo, UNet_Endo)
     return (epi_dist + endo_dist) / 2
-
-# def hausdorff_distance(mask1, mask2):
-#     # Check if the inputs are PyTorch tensors and on a CUDA device
-#     if torch.is_tensor(mask1) and mask1.is_cuda:
-#         mask1 = mask1.cpu()
-#     if torch.is_tensor(mask2) and mask2.is_cuda:
-#         mask2 = mask2.cpu()
-    
-#     # Convert tensors to NumPy arrays if they are not already
-#     if torch.is_tensor(mask1):
-#         mask1 = mask1.numpy()
-#     if torch.is_tensor(mask2):
-#         mask2 = mask2.numpy()
-#     # Convert masks to sets of coordinates
-#     coords1 = np.argwhere(mask1)
-#     coords2 = np.argwhere(mask2)
-    
-#     # Calculate directed Hausdorff distances
-#     forward_hdist = directed_hausdorff(coords1, coords2)[0]
-#     backward_hdist = directed_hausdorff(coords2, coords1)[0]
-    
-#     # Return the max of the two directed distances
-#     return max(forward_hdist, backward_hdist)
-
-# def calculate_hausdorff_from_multiple_masks(true_masks, pred_masks):
-#     total_hausdorff = 0
-#     for true_mask, pred_mask in zip(true_masks, pred_masks):
-#         hausdorff = calculate_hausdorff_from_multiple_masks(true_mask, pred_mask)
-#         total_hausdorff += hausdorff
-
-#     return total_hausdorff / len(true_masks)
-
-
 
 
 if __name__ == "__main__":
