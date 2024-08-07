@@ -24,6 +24,7 @@ from utils.AHA_segmenting import create_AHA_segmentation
 
 from config import *
 
+
 @torch.inference_mode()
 def evaluate(
     net,
@@ -47,7 +48,6 @@ def evaluate(
             point_masks = convert_labels_to_single_mask(
                 labels, input_tensor.shape[2], input_tensor.shape[3], mask_sigma
             )  # radius
-
 
             # including the heart mask in the ground truth output mask
             non_overlap_mask = LV == 0

@@ -19,7 +19,6 @@ from dotenv import load_dotenv
 from utils.dataset import DataSet
 from utils.unet_preprocessing import convert_labels_to_single_mask
 from utils.dice_score import dice_loss, tversky_loss
-from utils.unet_postprocessing import generate_keypoint_image
 from evaluate import evaluate
 
 from utils.models.RegressionCNN import *
