@@ -4,6 +4,10 @@ data/
 model_tests/
 non_unet/
 wandb/
+wandb_old_login/
+scratch/
 *.png
+
+__pycache__/
 
 .env
