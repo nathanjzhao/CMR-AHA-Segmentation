@@ -11,3 +11,5 @@ scratch/
 __pycache__/
 
 .env
+mlruns/
+wandb_old2/

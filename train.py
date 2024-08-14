@@ -39,19 +39,35 @@ def train_model():
         project="U-Net", resume="allow", anonymous="allow", magic=True
     )
 
-    lr = wandb.config.lr
-    scheduler_patience = wandb.config.scheduler_patience
-    weight_decay = wandb.config.weight_decay
-    momentum = wandb.config.momentum
 
-    rotation = wandb.config.rotation
-    translation = wandb.config.translation
-    scale = wandb.config.scale
-    contrast = wandb.config.contrast
+    lr = 0.004132346709676413
+    scheduler_patience = 25
+    weight_decay = 0.0007715540992885709
+    momentum = 0.99
 
-    CE = wandb.config.CE
-    tversky_beta = wandb.config.tversky_beta
-    sigma = wandb.config.sigma
+    rotation = 12
+    translation = .5
+    scale = 1.2
+    contrast = 1.5
+
+    CE = .9381851370309372
+    tversky_beta = 0.7
+    sigma = 5
+
+
+    # lr = wandb.config.lr
+    # scheduler_patience = wandb.config.scheduler_patience
+    # weight_decay = wandb.config.weight_decay
+    # momentum = wandb.config.momentum
+
+    # rotation = wandb.config.rotation
+    # translation = wandb.config.translation
+    # scale = wandb.config.scale
+    # contrast = wandb.config.contrast
+
+    # CE = wandb.config.CE
+    # tversky_beta = wandb.config.tversky_beta
+    # sigma = wandb.config.sigma
 
     torch.manual_seed(random_seed)
 
@@ -311,7 +327,7 @@ def train_model():
     wandb.run.summary["best_val_score"] = best_val_score
 
 
-project_name = "U-Net-7.23"
+project_name = "U-Net-8.11"
 wandb.login(key=wandb_key)
 sweep_id = wandb.sweep(sweep_config, project=project_name)
 wandb.agent(sweep_id, train_model, count=30)

@@ -139,7 +139,7 @@ lr = 1e-6
 weight_decay = 1e-8
 momentum = 0.999
 bilinear = False
-sigma = 6
+sigma = 5
 
 flipping = False
 
