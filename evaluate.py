@@ -1,13 +1,11 @@
 import logging
-import os
-from dotenv import load_dotenv
 import torch
-import wandb
 import numpy as np
 import torch.nn.functional as F
 from unet.unet_model import UNet
 from utils.dataset import DataSet
 from torch.utils.data import DataLoader
+import matplotlib.pyplot as plt
 from utils.unet_preprocessing import (
     convert_labels_to_single_mask,
 )
@@ -23,6 +21,8 @@ from utils.dice_score import multiclass_dice_coeff, dice_coeff
 from utils.AHA_segmenting import create_AHA_segmentation
 
 from config import *
+import mlflow
+import mlflow.pytorch
 
 
 @torch.inference_mode()
@@ -147,8 +147,6 @@ def evaluate(
     ]
 
     # Initialize a dictionary to store the masks and images
-    wandb_logs = {}
-
     for i, percentile_dice_score in enumerate(percentile_dice_scores):
         # Find the entry with the dice score closest to the percentile score
         closest_entry = min(
@@ -179,57 +177,64 @@ def evaluate(
         LV_overlaps = create_overlap_figure(mask_true[0, 3], mask_pred[0, 3], image_np)
 
         # NOTE: have to get MD/FA from this + should include slice location
-        GT_AHA_segmentation = create_AHA_segmentation(
-            GT_keypoints, mask_true[0, 3].float().cpu()
-        )
-        pred_AHA_segmentation = create_AHA_segmentation(
-            pred_keypoints, mask_pred[0, 3].float().cpu()
-        )
+        # GT_AHA_segmentation = create_AHA_segmentation(
+        #     GT_keypoints, mask_true[0, 3].float().cpu()
+        # )
+        # pred_AHA_segmentation = create_AHA_segmentation(
+        #     pred_keypoints, mask_pred[0, 3].float().cpu()
+        # )
 
-        # Store the masks and image in the results dictionary under the percentile key
-        wandb_logs[f"validation {percentiles[i]}th percentile"] = {
-            "masks_panel": [
-                wandb.Image(mask_true_compiled),
-                wandb.Image(mask_pred_compiled),
-                wandb.Image(
-                    image[0].float().cpu(),
-                    caption=f"Overall Dice: {closest_entry['dice_score']:.2f}\nMSE: {closest_entry['mse_score']:.2f}\nHausdorff: {closest_entry['hausdorff_score']:.2f}",
-                ),
-                wandb.Image(
-                    anterior_overlaps,
-                    caption=f"Dice: {closest_entry['anterior_dice_score']:.2f}",
-                ),
-                wandb.Image(
-                    inferior_overlaps,
-                    caption=f"Dice: {closest_entry['inferior_dice_score']:.2f}",
-                ),
-                wandb.Image(
-                    LV_overlaps, caption=f"Dice: {closest_entry['LV_dice_score']:.2f}"
-                ),
-            ],
-            "mask_predictions_panel": [
-                wandb.Image(mask_pred[0, 1].float().cpu()),
-                wandb.Image(mask_pred[0, 2].float().cpu()),
-                wandb.Image(mask_pred[0, 3].float().cpu()),
-            ],
-            # 'mask_true': wandb.Image(mask_true_compiled),
-            # 'mask_pred': wandb.Image(mask_pred_compiled),
-            # 'image': wandb.Image(image[0, 0].float().cpu()),
-            # "scores": {
-            #     "dice_score": closest_entry["dice_score"],
-            #     "mse_score": closest_entry["mse_score"],
-            #     "hausdorff_score": closest_entry["hausdorff_score"],
-            #     "anterior_dice_score": closest_entry["anterior_dice_score"],
-            #     "inferior_dice_score": closest_entry["inferior_dice_score"],
-            #     "LV_dice_score": closest_entry["LV_dice_score"],
-            # }
-        }
+        # Save figures to files
+        mask_true_path = f"artifacts/mask_true_{percentiles[i]}.png"
+        mask_pred_path = f"artifacts/mask_pred_{percentiles[i]}.png"
+        image_path = f"artifacts/image_{percentiles[i]}.png"
+        keypoint_path = f"artifacts/keypoints_{percentiles[i]}.png"
+        anterior_overlaps_path = f"artifacts/anterior_overlaps_{percentiles[i]}.png"
+        inferior_overlaps_path = f"artifacts/inferior_overlaps_{percentiles[i]}.png"
+        LV_overlaps_path = f"artifacts/LV_overlaps_{percentiles[i]}.png"
 
-        if GT_AHA_segmentation is not None and pred_AHA_segmentation is not None:
-            print("not None!!!")
-            wandb_logs[f"validation {percentiles[i]}th percentile"][
-                "AHA_segmentations"
-            ] = [wandb.Image(GT_AHA_segmentation), wandb.Image(pred_AHA_segmentation)]
+        # Save the images (you might need to adjust this based on your image format)
+        plt.imsave(mask_true_path, mask_true_compiled.cpu().numpy())
+        plt.imsave(mask_pred_path, mask_pred_compiled.cpu().numpy())
+        plt.imsave(image_path, image[0].float().cpu().numpy())
+        plt.imsave(anterior_overlaps_path, anterior_overlaps)
+        plt.imsave(inferior_overlaps_path, inferior_overlaps)
+        plt.imsave(LV_overlaps_path, LV_overlaps)
+
+        # Log the images as artifacts
+        mlflow.log_artifact(mask_true_path)
+        mlflow.log_artifact(mask_pred_path)
+        mlflow.log_artifact(image_path)
+        mlflow.log_artifact(keypoint_file_path)
+        mlflow.log_artifact(anterior_overlaps_path)
+        mlflow.log_artifact(inferior_overlaps_path)
+        mlflow.log_artifact(LV_overlaps_path)
+
+        # if GT_AHA_segmentation is not None and pred_AHA_segmentation is not None:
+        #     GT_AHA_path = f"GT_AHA_{percentiles[i]}.png"
+        #     pred_AHA_path = f"pred_AHA_{percentiles[i]}.png"
+        #     plt.imsave(GT_AHA_path, GT_AHA_segmentation)
+        #     plt.imsave(pred_AHA_path, pred_AHA_segmentation)
+        #     mlflow.log_artifact(GT_AHA_path)
+        #     mlflow.log_artifact(pred_AHA_path)
+
+        # Log metrics
+        mlflow.log_metric(f"dice_score_{percentiles[i]}", closest_entry["dice_score"])
+        mlflow.log_metric(f"mse_score_{percentiles[i]}", closest_entry["mse_score"])
+        mlflow.log_metric(
+            f"hausdorff_score_{percentiles[i]}", closest_entry["hausdorff_score"]
+        )
+        mlflow.log_metric(
+            f"anterior_dice_score_{percentiles[i]}",
+            closest_entry["anterior_dice_score"],
+        )
+        mlflow.log_metric(
+            f"inferior_dice_score_{percentiles[i]}",
+            closest_entry["inferior_dice_score"],
+        )
+        mlflow.log_metric(
+            f"LV_dice_score_{percentiles[i]}", closest_entry["LV_dice_score"]
+        )
 
     N = max(num_val_batches, 1)
     for key in [
@@ -241,16 +246,13 @@ def evaluate(
         "inferior_dice_score",
         "LV_dice_score",
     ]:
-        wandb_logs[key] = sum([score[key] for score in scores]) / N
+        mlflow.log_metric(f"overall_{key}", sum([score[key] for score in scores]) / N)
 
     net.train()
-    return wandb_logs["dice_score"], wandb_logs
+    return sum([score["dice_score"] for score in scores]) / N
 
 
 if __name__ == "__main__":
-
-    load_dotenv()
-    wandb_key = os.getenv("WANDB_API_KEY")
 
     no_midpoint = True
     bilinear = False
@@ -283,12 +285,4 @@ if __name__ == "__main__":
     )
     test_dataloader = DataLoader(test_dataset, batch_size=1, shuffle=False)
 
-    wandb.login(key=wandb_key)
-    experiment = wandb.init(
-        project="U-Net-evaluate", resume="allow", anonymous="allow", magic=True
-    )
-    val_score, wandb_logs = evaluate(
-        net, test_dataloader, device, False, 5, downstream=False
-    )
-
-    wandb.log({"val score": val_score, **wandb_logs})
+    val_score = evaluate(net, test_dataloader, device, False, 5, downstream=False)

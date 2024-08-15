@@ -39,21 +39,19 @@ def train_model():
         project="U-Net", resume="allow", anonymous="allow", magic=True
     )
 
-
     lr = 0.004132346709676413
     scheduler_patience = 25
     weight_decay = 0.0007715540992885709
     momentum = 0.99
 
     rotation = 12
-    translation = .5
+    translation = 0.5
     scale = 1.2
     contrast = 1.5
 
-    CE = .9381851370309372
+    CE = 0.9381851370309372
     tversky_beta = 0.7
     sigma = 5
-
 
     # lr = wandb.config.lr
     # scheduler_patience = wandb.config.scheduler_patience

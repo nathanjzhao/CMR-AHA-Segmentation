@@ -13,7 +13,6 @@ import logging
 
 from tqdm import tqdm
 from unet import UNet
-import wandb
 from dotenv import load_dotenv
 
 from utils.dataset import DataSet
@@ -29,6 +28,8 @@ import optuna
 import mlflow
 import mlflow.pytorch
 
+os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
+
 load_dotenv()
 wandb_key = os.getenv("WANDB_API_KEY")
 
@@ -39,17 +40,16 @@ logging.info(f"Using device {device}")
 
 def train_model(trial):
 
-    lr = trial.suggest_loguniform('lr', 1e-5, 1e-2)
-    scheduler_patience = trial.suggest_int('scheduler_patience', 5, 50)
-    weight_decay = trial.suggest_loguniform('weight_decay', 1e-5, 1e-2)
-    momentum = trial.suggest_uniform('momentum', 0.9, 0.999)
-    rotation = trial.suggest_int('rotation', 0, 30)
-    translation = trial.suggest_uniform('translation', 0.1, 1.0)
-    scale = trial.suggest_uniform('scale', 1.0, 1.5)
-    contrast = trial.suggest_uniform('contrast', 1.0, 2.0)
-    CE = trial.suggest_uniform('CE', 0.5, 1.0)
-    tversky_beta = trial.suggest_uniform('tversky_beta', 0.5, 0.9)
-    
+    lr = trial.suggest_float("lr", 1e-5, 1e-2, log=True)
+    scheduler_patience = trial.suggest_int("scheduler_patience", 5, 50)
+    weight_decay = trial.suggest_float("weight_decay", 1e-5, 1e-2, log=True)
+    momentum = trial.suggest_float("momentum", 0.9, 0.999)
+    rotation = trial.suggest_int("rotation", 0, 30)
+    translation = trial.suggest_float("translation", 0.1, 1.0)
+    scale = trial.suggest_float("scale", 1.0, 1.5)
+    contrast = trial.suggest_float("contrast", 1.0, 2.0)
+    CE = trial.suggest_float("CE", 0.5, 1.0)
+    tversky_beta = trial.suggest_float("tversky_beta", 0.5, 0.9)
 
     with mlflow.start_run(nested=True):
         # Log hyperparameters
@@ -78,7 +78,9 @@ def train_model(trial):
         )
         n_train, n_val = len(train_dataset), len(val_dataset)
 
-        train_dataloader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True)
+        train_dataloader = DataLoader(
+            train_dataset, batch_size=batch_size, shuffle=True
+        )
         val_dataloader = DataLoader(val_dataset, batch_size=1, shuffle=False)
 
         best_val_score = 0
@@ -104,7 +106,9 @@ def train_model(trial):
             optimizer, "max", patience=scheduler_patience
         )  # goal: maximize Dice score
         grad_scaler = torch.cuda.amp.GradScaler(enabled=amp)
-        criterion = nn.CrossEntropyLoss() if unet.n_classes > 1 else nn.BCEWithLogitsLoss()
+        criterion = (
+            nn.CrossEntropyLoss() if unet.n_classes > 1 else nn.BCEWithLogitsLoss()
+        )
         global_step = 0
 
         logging.info(
@@ -195,7 +199,9 @@ def train_model(trial):
                         else:
                             CE_loss = criterion(mask_pred, mask_true)
 
-                            mlflow.log_metric("train cross entropy loss", CE_loss, step=global_step)
+                            mlflow.log_metric(
+                                "train cross entropy loss", CE_loss, step=global_step
+                            )
                             loss = CE * CE_loss
 
                             # Only tversky/dice on non-background classes
@@ -210,7 +216,9 @@ def train_model(trial):
                                     beta=tversky_beta,
                                 )
                                 loss += (1 - CE) * tversky
-                                mlflow.log_metric("train tversky loss", tversky, step=global_step)
+                                mlflow.log_metric(
+                                    "train tversky loss", tversky, step=global_step
+                                )
                             else:
                                 dice = dice_loss(
                                     F.softmax(mask_pred, dim=1)[:, 1:].float(),
@@ -221,7 +229,9 @@ def train_model(trial):
                                 )
 
                                 loss += (1 - CE) * dice
-                                mlflow.log_metric("train dice loss", dice, step=global_step)
+                                mlflow.log_metric(
+                                    "train dice loss", dice, step=global_step
+                                )
 
                     optimizer.zero_grad(set_to_none=True)
                     grad_scaler.scale(loss).backward()
@@ -258,19 +268,25 @@ def train_model(trial):
                             #             value.grad.data.cpu()
                             #         )
 
-                            val_score, eval_wandb_logs = evaluate(
+                            val_score = evaluate(
                                 unet, val_dataloader, device, amp, sigma
                             )
                             scheduler.step(val_score)
 
                             mlflow.log_metric("val_score", val_score, step=epoch)
-                            mlflow.log_metric("learning_rate", optimizer.param_groups[0]["lr"], step=epoch)
+                            mlflow.log_metric(
+                                "learning_rate",
+                                optimizer.param_groups[0]["lr"],
+                                step=epoch,
+                            )
                             logging.info("Validation Dice score: {}".format(val_score))
 
                             if val_score > best_val_score:
                                 best_val_score = val_score
                                 torch.save(unet.state_dict(), str(best_model_path))
-                                logging.info(f"New best model saved with validation score: {val_score}")
+                                logging.info(
+                                    f"New best model saved with validation score: {val_score}"
+                                )
                                 mlflow.log_artifact(str(best_model_path))
 
                             mlflow.log_metric("best_val_score", best_val_score)
@@ -287,17 +303,14 @@ def train_model(trial):
         return best_val_score
 
 
-
-
 def main():
-    mlflow.set_experiment("U-Net-Optimization-3")
+    mlflow.set_experiment("dwi")
 
-    study = optuna.create_study(direction='maximize')
+    study = optuna.create_study(direction="maximize")
     study.optimize(train_model, n_trials=30)
 
     print("Best trial:")
     trial = study.best_trial
-
     print("  Value: ", trial.value)
     print("  Params: ")
     for key, value in trial.params.items():
@@ -307,12 +320,13 @@ def main():
     with mlflow.start_run():
         mlflow.log_params(trial.params)
         mlflow.log_metric("best_val_score", trial.value)
-        
+
         best_model_path = Path(checkpoint_path) / f"best_model_trial_{trial.number}.pth"
         mlflow.log_artifact(str(best_model_path))
         mlflow.pytorch.log_model(torch.load(best_model_path), "best_model")
 
     print(f"Best model saved to {best_model_path}")
+
 
 if __name__ == "__main__":
     main()

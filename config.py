@@ -124,8 +124,8 @@ test_name_prefix = ""
 filter_level = 0
 record_spread = False
 
-use_MD = True  # Set to False if you don't want to use MD
-use_E1 = True  # Set to False if you don't want to use E1
+use_MD = False  # Set to False if you don't want to use MD
+use_E1 = False  # Set to False if you don't want to use E1
 
 batch_size = 8
 num_epochs = 100
@@ -142,5 +142,4 @@ bilinear = False
 sigma = 5
 
 flipping = False
-
 amp = False
