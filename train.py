@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 # coding: utf-8
 
+import argparse
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -304,8 +305,14 @@ def train_model(trial):
 
 
 def main():
+    parser = argparse.ArgumentParser(description="Train a model with Optuna and MLflow")
+    parser.add_argument("--exp_name", type=str, required=True, help="MLflow experiment name")
+    args = parser.parse_args()
+
+    
     # MLFLOW EXPERIMENT NAME
-    mlflow.set_experiment("dwi-unflipped-coords")
+    mlflow.set_experiment(args.exp_name)
+    # mlflow.set_experiment("dwi-md-e1-no-artifacts-saved-8.17")
 
     study = optuna.create_study(direction="maximize")
     study.optimize(train_model, n_trials=30)
@@ -322,7 +329,7 @@ def main():
         mlflow.log_params(trial.params)
         mlflow.log_metric("best_val_score", trial.value)
 
-        best_model_path = Path(checkpoint_path) / f"best_model_trial_{trial.number}.pth"
+        best_model_path = Path(checkpoint_path) / f"{args.exp_name}_best_model_trial_{trial.number}.pth"
         mlflow.log_artifact(str(best_model_path))
         mlflow.pytorch.log_model(torch.load(best_model_path), "best_model")
 

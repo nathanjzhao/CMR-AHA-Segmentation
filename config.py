@@ -108,8 +108,8 @@ sweep_config = {
 
 
 # Summer of Segmentation data
-data_path = "./data/new_data/train"
-val_data_path = "./data/new_data/val"
+data_path = "./data/unswapped_data/train"
+val_data_path = "./data/unswapped_data/val"
 
 # data_path = './data/original_standard_labels/train'
 # val_data_path = './data/original_standard_labels/val'
@@ -124,8 +124,8 @@ test_name_prefix = ""
 filter_level = 0
 record_spread = False
 
-use_MD = False  # Set to False if you don't want to use MD
-use_E1 = False  # Set to False if you don't want to use E1
+use_MD = True  # Set to False if you don't want to use MD
+use_E1 = True  # Set to False if you don't want to use E1
 
 batch_size = 8
 num_epochs = 100

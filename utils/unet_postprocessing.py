@@ -81,6 +81,7 @@ def generate_keypoint_image(mask_true, mask_pred, image, num_classes):
         # Return the path to the file
         return f.name, centroids_true, centroids_pred
 
+    plt.close(fig)
 
 def compile_masks(mask_true, num_classes):
     # Create a tensor of class numbers

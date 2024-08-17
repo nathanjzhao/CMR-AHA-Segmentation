@@ -114,7 +114,7 @@ class DataSet(Dataset):
         homogeneous_label = torch.cat((label, torch.ones(num_points, 1)), dim=1)
         transformed_label = torch.mm(A, homogeneous_label.t()).t()
         transformed_label = transformed_label[:, :2]
-        transformed_label += torch.tensor([[tx, ty] for _ in range(num_points)]) # because keypoints dims NOT swapped
+        transformed_label += torch.tensor([[ty, tx] for _ in range(num_points)]) # because keypoints dims swapped
 
         transformed_image = F.affine(
             image,
