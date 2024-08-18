@@ -37,6 +37,8 @@ class DataSet(Dataset):
         filter_level=0,
         largest_size=256,
         use_mask=False,
+        use_MD=False,
+        use_E1=False,
     ):
 
         assert os.path.exists(data_folder), "Folder not present"
@@ -68,28 +70,17 @@ class DataSet(Dataset):
 
         self.no_midpoint = no_midpoint
         self.use_mask = use_mask
+        self.use_MD = use_MD
+        self.use_E1 = use_E1
 
     def __len__(self):
         return len(self.data_files)
 
-    def affine_transform(
-        self, image, label, mask=None, degrees=None, translate=None, scale=None
-    ):
-        degrees = 0 if degrees is None else degrees
-        translate = 0 if translate is None else translate
-        scale = 1.0 if scale is None else scale
-
-        r, t, sc, sh = transforms.RandomAffine.get_params(
-            degrees=(-degrees, degrees),
-            translate=(translate, translate),
-            scale_ranges=(1 / scale, scale),
-            shears=(0, 0),
-            img_size=image.size,
-        )
+    def transform_label(self, label, r, t, sc, image_size):
         theta = np.radians(r)
 
         tx, ty = t
-        cx, cy = image.size[0] / 2, image.size[1] / 2
+        cx, cy = image_size[0] / 2, image_size[1] / 2
 
         cos_theta, sin_theta = np.cos(theta), np.sin(theta)
 
@@ -116,39 +107,15 @@ class DataSet(Dataset):
         transformed_label = transformed_label[:, :2]
         transformed_label += torch.tensor([[ty, tx] for _ in range(num_points)]) # because keypoints dims swapped
 
-        transformed_image = F.affine(
-            image,
-            angle=-r,
-            translate=(tx, ty),
-            scale=sc,
-            shear=sh,
-            fill=0,
-            center=(cx, cy),
-        )
-
-        if mask is not None:
-            transformed_mask = F.affine(
-                mask,
-                angle=-r,
-                translate=(tx, ty),
-                scale=sc,
-                shear=sh,
-                fill=0,
-                center=(cx, cy),
-            )
-            return [transformed_image, transformed_mask, transformed_label]
-        else:
-            return [transformed_image, transformed_label]
+        return transformed_label
 
     def __getitem__(self, index):
         data = h5.loadmat(os.path.join(self.data_folder, self.data_files[index]))
 
         pil_image = Image.fromarray(data["NiFTi"].astype(np.uint8))
-
-        if self.use_mask:
-            pil_mask = Image.fromarray(data["Mask"].astype(np.uint8))
-        else:
-            pil_mask = None
+        pil_mask = Image.fromarray(data["Mask"].astype(np.uint8)) if self.use_mask else None
+        pil_md = Image.fromarray(data["MD"].astype(np.uint8)) if self.use_MD else None
+        pil_e1 = Image.fromarray(data["E1"].astype(np.uint8)) if self.use_E1 else None
 
         # Pad image and mask (if used) until they are 256x256
         width, height = pil_image.size
@@ -159,6 +126,10 @@ class DataSet(Dataset):
         pil_image = ImageOps.expand(pil_image, border)
         if pil_mask:
             pil_mask = ImageOps.expand(pil_mask, border)
+        if pil_md:
+            pil_md = ImageOps.expand(pil_md, border)
+        if pil_e1:
+            pil_e1 = ImageOps.expand(pil_e1, border)
 
         # Apply random contrast to image (not to mask)
         contrast_factor = random.uniform(1 / self.contrast, self.contrast)
@@ -185,28 +156,41 @@ class DataSet(Dataset):
             pil_image = F.hflip(pil_image)
             if pil_mask:
                 pil_mask = F.hflip(pil_mask)
+            if pil_md:
+                pil_md = F.hflip(pil_md)
+            if pil_e1:
+                pil_e1 = F.hflip(pil_e1)
 
             for i in range(len(label)):
                 label[i][1] = pil_image.size[0] - label[i][1]
 
-        if pil_mask:
-            NifTi, Mask, label = self.affine_transform(
-                pil_image, label, pil_mask, self.degrees, self.translate, self.scale
-            )
-        else:
-            NifTi, label = self.affine_transform(
-                pil_image, label, None, self.degrees, self.translate, self.scale
-            )
 
-        label = (label / pil_image.size[0]).flatten().to(torch.float32)
-        NifTi = transforms.ToTensor()(NifTi)[0]
+        # Generate affine transformation parameters
+        r, t, sc, sh = transforms.RandomAffine.get_params(
+            degrees=(-self.degrees, self.degrees) if self.degrees else (0, 0),
+            translate=(self.translate, self.translate) if self.translate else (0, 0),
+            scale_ranges=(1 / self.scale, self.scale) if self.scale else (1.0, 1.0),
+            shears=(0, 0),
+            img_size=pil_image.size,
+        )
+            
+        # Apply the same affine transformation to all images and masks
+        transformed_image = F.affine(pil_image, angle=-r, translate=t, scale=sc, shear=sh)
+        transformed_mask = F.affine(pil_mask, angle=-r, translate=t, scale=sc, shear=sh) if pil_mask else None
+        transformed_md = F.affine(pil_md, angle=-r, translate=t, scale=sc, shear=sh) if pil_md else None
+        transformed_e1 = F.affine(pil_e1, angle=-r, translate=t, scale=sc, shear=sh) if pil_e1 else None
+        
+        # Transform label
+        transformed_label = self.transform_label(label, r, t, sc, pil_image.size)
+        
+        # Convert to tensors
+        NifTi = transforms.ToTensor()(transformed_image)[0]
+        label = (transformed_label / transformed_image.size[0]).flatten().to(torch.float32)
 
-        additional_data = []
-        if "MD" in data and "E1" in data:
-            additional_data.extend([data["MD"], data["E1"]])
+        additional_data = [
+            transforms.ToTensor()(transformed_mask)[0] if self.use_mask else [],
+            transforms.ToTensor()(transformed_md)[0] if self.use_MD else [],
+            transforms.ToTensor()(transformed_e1) if self.use_E1 else []
+        ]
 
-        if pil_mask:
-            Mask = transforms.ToTensor()(Mask)[0]
-            return (NifTi, Mask, label, *additional_data)
-        else:
-            return (NifTi, label, *additional_data)
+        return (NifTi, label, *additional_data)

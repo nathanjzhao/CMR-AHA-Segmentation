@@ -78,10 +78,10 @@ def generate_keypoint_image(mask_true, mask_pred, image, num_classes):
     # Save the figure to a temporary file
     with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
         fig.savefig(f.name)
+        plt.close(fig)
+
         # Return the path to the file
         return f.name, centroids_true, centroids_pred
-
-    plt.close(fig)
 
 def compile_masks(mask_true, num_classes):
     # Create a tensor of class numbers

@@ -44,7 +44,7 @@ def evaluate(
 
     # iterate over the validation set
     with torch.autocast(device.type if device.type != "mps" else "cpu", enabled=amp):
-        for images, LV, labels, MD, E1 in dataloader:
+        for images, labels, LV, MD, E1 in dataloader:
             input_tensor = images[:, None, :, :]  # to match input channels
             point_masks = convert_labels_to_single_mask(
                 labels, input_tensor.shape[2], input_tensor.shape[3], mask_sigma
@@ -63,7 +63,6 @@ def evaluate(
 
             # Concatenate E1 if used
             if use_E1:
-                E1 = E1.permute(0, 3, 1, 2)
                 input_tensor = torch.cat([input_tensor, E1], dim=1)
 
             # move images and labels to correct device and type
@@ -157,25 +156,25 @@ def evaluate(
         # Get the mask_true, mask_pred, and image from the closest entry
         mask_true = closest_entry["mask_true"]
         mask_pred = closest_entry["mask_pred"]
-        image = closest_entry["image"]
+        # image = closest_entry["image"]
 
         # Convert masks back into form of single mask (w/ numbers for each class)
-        mask_true_compiled = compile_masks(mask_true[0], net.n_classes)
-        mask_pred_compiled = compile_masks(mask_pred[0], net.n_classes)
+        # mask_true_compiled = compile_masks(mask_true[0], net.n_classes)
+        # mask_pred_compiled = compile_masks(mask_pred[0], net.n_classes)
 
-        keypoint_file_path, GT_keypoints, pred_keypoints = generate_keypoint_image(
-            mask_true_compiled, mask_pred_compiled, image, net.n_classes - 1
-        )
+        # keypoint_file_path, GT_keypoints, pred_keypoints = generate_keypoint_image(
+        #     mask_true_compiled, mask_pred_compiled, image, net.n_classes - 1
+        # )
 
         # Generate overlaps images
-        image_np = image[0].float().cpu().numpy()
-        anterior_overlaps = create_overlap_figure(
-            mask_true[0, 1], mask_pred[0, 1], image_np
-        )
-        inferior_overlaps = create_overlap_figure(
-            mask_true[0, 2], mask_pred[0, 2], image_np
-        )
-        LV_overlaps = create_overlap_figure(mask_true[0, 3], mask_pred[0, 3], image_np)
+        # image_np = image[0].float().cpu().numpy()
+        # anterior_overlaps = create_overlap_figure(
+        #     mask_true[0, 1], mask_pred[0, 1], image_np
+        # )
+        # inferior_overlaps = create_overlap_figure(
+        #     mask_true[0, 2], mask_pred[0, 2], image_np
+        # )
+        # LV_overlaps = create_overlap_figure(mask_true[0, 3], mask_pred[0, 3], image_np)
 
         # NOTE: have to get MD/FA from this + should include slice location
         # GT_AHA_segmentation = create_AHA_segmentation(
@@ -192,7 +191,7 @@ def evaluate(
         # experiment_id = mlflow_run.info.experiment_id
         # experiment_name = mlflow.get_experiment(experiment_id).name
 
-        # # Create a base directory for artifacts using experiment name and run id
+        # Create a base directory for artifacts using experiment name and run id
         # artifact_base_dir = f"artifacts/{experiment_name}/{run_name}"
         # os.makedirs(artifact_base_dir, exist_ok=True)
 

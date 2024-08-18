@@ -69,6 +69,8 @@ def train_model(trial):
             filter_level=filter_level,
             largest_size=200,
             use_mask=True,
+            use_MD=use_MD,
+            use_E1=use_E1,
         )
         val_dataset = DataSet(
             val_data_path,
@@ -76,6 +78,8 @@ def train_model(trial):
             filter_level=filter_level,
             largest_size=200,
             use_mask=True,
+            use_MD=use_MD,
+            use_E1=use_E1,
         )
         n_train, n_val = len(train_dataset), len(val_dataset)
 
@@ -148,7 +152,7 @@ def train_model(trial):
             with tqdm(
                 total=n_train, desc=f"Epoch {epoch}/{num_epochs}", unit="img"
             ) as pbar:
-                for images, heart_mask, labels, MD, E1 in train_dataloader:
+                for images, labels, LV, MD, E1 in train_dataloader:
                     input_tensor = images[:, None, :, :]  # Add channel dimension
 
                     # convering keypoints into a single mask
@@ -157,7 +161,7 @@ def train_model(trial):
                     )  # radius
 
                     # including the heart mask in the ground truth output mask
-                    non_overlap_mask = heart_mask == 0
+                    non_overlap_mask = LV == 0
                     mask_true = (
                         point_masks * non_overlap_mask
                         + (unet.n_classes - 1) * ~non_overlap_mask
@@ -170,7 +174,7 @@ def train_model(trial):
 
                     # Concatenate E1 if used
                     if use_E1:
-                        E1 = E1.permute(0, 3, 1, 2)
+                        breakpoint()
                         input_tensor = torch.cat([input_tensor, E1], dim=1)
 
                     assert input_tensor.shape[1] == unet.n_channels, (
