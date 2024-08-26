@@ -44,7 +44,7 @@ def evaluate(
 
     # iterate over the validation set
     with torch.autocast(device.type if device.type != "mps" else "cpu", enabled=amp):
-        for images, labels, LV, MD, E1 in dataloader:
+        for images, labels, LV, MD, E1, E1_xyz in dataloader:
             input_tensor = images[:, None, :, :]  # to match input channels
             point_masks = convert_labels_to_single_mask(
                 labels, input_tensor.shape[2], input_tensor.shape[3], mask_sigma
@@ -64,6 +64,11 @@ def evaluate(
             # Concatenate E1 if used
             if use_E1:
                 input_tensor = torch.cat([input_tensor, E1], dim=1)
+
+            # Concatenate E1_xyz if used
+            if use_E1_xyz:
+                E1_xyz = E1_xyz[:, None, :, :]
+                input_tensor = torch.cat([input_tensor, E1_xyz], dim=1)
 
             # move images and labels to correct device and type
             input_tensor = input_tensor.to(
@@ -156,70 +161,70 @@ def evaluate(
         # Get the mask_true, mask_pred, and image from the closest entry
         mask_true = closest_entry["mask_true"]
         mask_pred = closest_entry["mask_pred"]
-        # image = closest_entry["image"]
+        image = closest_entry["image"]
 
         # Convert masks back into form of single mask (w/ numbers for each class)
-        # mask_true_compiled = compile_masks(mask_true[0], net.n_classes)
-        # mask_pred_compiled = compile_masks(mask_pred[0], net.n_classes)
+        mask_true_compiled = compile_masks(mask_true[0], net.n_classes)
+        mask_pred_compiled = compile_masks(mask_pred[0], net.n_classes)
 
-        # keypoint_file_path, GT_keypoints, pred_keypoints = generate_keypoint_image(
-        #     mask_true_compiled, mask_pred_compiled, image, net.n_classes - 1
-        # )
+        keypoint_file_path, GT_keypoints, pred_keypoints = generate_keypoint_image(
+            mask_true_compiled, mask_pred_compiled, image, net.n_classes - 1
+        )
 
         # Generate overlaps images
-        # image_np = image[0].float().cpu().numpy()
-        # anterior_overlaps = create_overlap_figure(
-        #     mask_true[0, 1], mask_pred[0, 1], image_np
-        # )
-        # inferior_overlaps = create_overlap_figure(
-        #     mask_true[0, 2], mask_pred[0, 2], image_np
-        # )
-        # LV_overlaps = create_overlap_figure(mask_true[0, 3], mask_pred[0, 3], image_np)
+        image_np = image[0].float().cpu().numpy()
+        anterior_overlaps = create_overlap_figure(
+            mask_true[0, 1], mask_pred[0, 1], image_np
+        )
+        inferior_overlaps = create_overlap_figure(
+            mask_true[0, 2], mask_pred[0, 2], image_np
+        )
+        LV_overlaps = create_overlap_figure(mask_true[0, 3], mask_pred[0, 3], image_np)
 
         # NOTE: have to get MD/FA from this + should include slice location
         # GT_AHA_segmentation = create_AHA_segmentation(
         #     GT_keypoints, mask_true[0, 3].float().cpu()
         # )
         # pred_AHA_segmentation = create_AHA_segmentation(
-        #     pred_keypoints, mask_pred[0, 3].float().cpu()
+        #     pred_keypointsf, mask_pred[0, 3].float().cpu()
         # )
 
         # LOGGING EXPERIMENT FIGURES
 
-        # mlflow_run = mlflow.active_run()
-        # run_name = mlflow_run.info.run_name
-        # experiment_id = mlflow_run.info.experiment_id
-        # experiment_name = mlflow.get_experiment(experiment_id).name
+        mlflow_run = mlflow.active_run()
+        run_name = mlflow_run.info.run_name
+        experiment_id = mlflow_run.info.experiment_id
+        experiment_name = mlflow.get_experiment(experiment_id).name
 
         # Create a base directory for artifacts using experiment name and run id
-        # artifact_base_dir = f"artifacts/{experiment_name}/{run_name}"
-        # os.makedirs(artifact_base_dir, exist_ok=True)
+        artifact_base_dir = f"artifacts/{experiment_name}/{run_name}"
+        os.makedirs(artifact_base_dir, exist_ok=True)
 
-        # # Save figures to files
-        # mask_true_path = os.path.join(artifact_base_dir, f"mask_true_{percentiles[i]}.png")
-        # mask_pred_path = os.path.join(artifact_base_dir, f"mask_pred_{percentiles[i]}.png")
-        # image_path = os.path.join(artifact_base_dir, f"image_{percentiles[i]}.png")
-        # keypoint_path = os.path.join(artifact_base_dir, f"keypoints_{percentiles[i]}.png")
-        # anterior_overlaps_path = os.path.join(artifact_base_dir, f"anterior_overlaps_{percentiles[i]}.png")
-        # inferior_overlaps_path = os.path.join(artifact_base_dir, f"inferior_overlaps_{percentiles[i]}.png")
-        # LV_overlaps_path = os.path.join(artifact_base_dir, f"LV_overlaps_{percentiles[i]}.png")
+        # Save figures to files
+        mask_true_path = os.path.join(artifact_base_dir, f"mask_true_{percentiles[i]}.png")
+        mask_pred_path = os.path.join(artifact_base_dir, f"mask_pred_{percentiles[i]}.png")
+        image_path = os.path.join(artifact_base_dir, f"image_{percentiles[i]}.png")
+        keypoint_path = os.path.join(artifact_base_dir, f"keypoints_{percentiles[i]}.png")
+        anterior_overlaps_path = os.path.join(artifact_base_dir, f"anterior_overlaps_{percentiles[i]}.png")
+        inferior_overlaps_path = os.path.join(artifact_base_dir, f"inferior_overlaps_{percentiles[i]}.png")
+        LV_overlaps_path = os.path.join(artifact_base_dir, f"LV_overlaps_{percentiles[i]}.png")
 
-        # # Save the images (you might need to adjust this based on your image format)
-        # plt.imsave(mask_true_path, mask_true_compiled.cpu().numpy())
-        # plt.imsave(mask_pred_path, mask_pred_compiled.cpu().numpy())
-        # plt.imsave(image_path, image[0].float().cpu().numpy())
-        # plt.imsave(anterior_overlaps_path, anterior_overlaps)
-        # plt.imsave(inferior_overlaps_path, inferior_overlaps)
-        # plt.imsave(LV_overlaps_path, LV_overlaps)
+        # Save the images (you might need to adjust this based on your image format)
+        plt.imsave(mask_true_path, mask_true_compiled.cpu().numpy())
+        plt.imsave(mask_pred_path, mask_pred_compiled.cpu().numpy())
+        plt.imsave(image_path, image[0].float().cpu().numpy())
+        plt.imsave(anterior_overlaps_path, anterior_overlaps)
+        plt.imsave(inferior_overlaps_path, inferior_overlaps)
+        plt.imsave(LV_overlaps_path, LV_overlaps)
 
-        # # Log the images as artifacts
-        # mlflow.log_artifact(mask_true_path, artifact_path=f"{experiment_name}/{run_name}")
-        # mlflow.log_artifact(mask_pred_path, artifact_path=f"{experiment_name}/{run_name}")
-        # mlflow.log_artifact(image_path, artifact_path=f"{experiment_name}/{run_name}")
-        # mlflow.log_artifact(keypoint_file_path, artifact_path=f"{experiment_name}/{run_name}")
-        # mlflow.log_artifact(anterior_overlaps_path, artifact_path=f"{experiment_name}/{run_name}")
-        # mlflow.log_artifact(inferior_overlaps_path, artifact_path=f"{experiment_name}/{run_name}")
-        # mlflow.log_artifact(LV_overlaps_path, artifact_path=f"{experiment_name}/{run_name}")
+        # Log the images as artifacts
+        mlflow.log_artifact(mask_true_path, artifact_path=f"{experiment_name}/{run_name}")
+        mlflow.log_artifact(mask_pred_path, artifact_path=f"{experiment_name}/{run_name}")
+        mlflow.log_artifact(image_path, artifact_path=f"{experiment_name}/{run_name}")
+        mlflow.log_artifact(keypoint_file_path, artifact_path=f"{experiment_name}/{run_name}")
+        mlflow.log_artifact(anterior_overlaps_path, artifact_path=f"{experiment_name}/{run_name}")
+        mlflow.log_artifact(inferior_overlaps_path, artifact_path=f"{experiment_name}/{run_name}")
+        mlflow.log_artifact(LV_overlaps_path, artifact_path=f"{experiment_name}/{run_name}")
 
         # if GT_AHA_segmentation is not None and pred_AHA_segmentation is not None:
         #     GT_AHA_path = f"GT_AHA_{percentiles[i]}.png"
@@ -257,7 +262,11 @@ def evaluate(
         "inferior_dice_score",
         "LV_dice_score",
     ]:
-        mlflow.log_metric(f"overall_average_{key}", sum([score[key] for score in scores]) / N)
+        values = torch.tensor([score[key] for score in scores])
+        mean = torch.mean(values).item()
+        std_dev = torch.std(values).item()
+        mlflow.log_metric(f"overall_average_{key}", mean)
+        mlflow.log_metric(f"overall_std_dev_{key}", std_dev)
 
     net.train()
     return sum([score["dice_score"] for score in scores]) / N
@@ -268,7 +277,7 @@ if __name__ == "__main__":
     no_midpoint = True
     bilinear = False
 
-    n_channels = 1 + (1 if use_MD else 0) + (1 if use_E1 else 0)
+    n_channels = 1 + (1 if use_MD else 0) + (1 if use_E1 else 0) + (1 if use_E1_xyz else 0)
     net = UNet(
         n_channels=n_channels, n_classes=3 if no_midpoint else 4, bilinear=bilinear
     )

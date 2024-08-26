@@ -41,22 +41,62 @@ logging.info(f"Using device {device}")
 
 def train_model(trial):
 
-    lr = trial.suggest_float("lr", 1e-5, 1e-2, log=True)
-    scheduler_patience = trial.suggest_int("scheduler_patience", 5, 50)
-    weight_decay = trial.suggest_float("weight_decay", 1e-5, 1e-2, log=True)
-    momentum = trial.suggest_float("momentum", 0.9, 0.999)
-    rotation = trial.suggest_int("rotation", 0, 30)
-    translation = trial.suggest_float("translation", 0.1, 1.0)
-    scale = trial.suggest_float("scale", 1.0, 1.5)
-    contrast = trial.suggest_float("contrast", 1.0, 2.0)
-    CE = trial.suggest_float("CE", 0.5, 1.0)
-    tversky_beta = trial.suggest_float("tversky_beta", 0.5, 0.9)
+    # DWI ONLY BEST PARAMS
+    lr = 2.0588016247936366e-05
+    scheduler_patience = 50
+    weight_decay = 2.7125703227026753e-05
+    momentum = 0.9202963227950742
+    rotation = 12
+    translation = 0.4404837511974157
+    scale = 1.3007134276497576
+    contrast = 1.323116221636298
+    CE = 0.9321304456017052
+    tversky_beta = 0.8575606706272363
+    
+    # # DWI MD BEST PARAMS
+    # lr = 0.00014748192132844827
+    # scheduler_patience = 45
+    # weight_decay = 6.621694244661705e-05
+    # momentum = 0.9396285942027086
+    # rotation = 10
+    # translation = 0.2120135620613086
+    # scale = 1.1327445743733573
+    # contrast = 1.3100779868784782
+    # CE = 0.6182408463717564
+    # tversky_beta = 0.7278253717198969
+
+    # # DWI MD E1_xyz BEST PARAMS
+    # lr = 0.00014984274825830755
+    # scheduler_patience = 38
+    # weight_decay = 0.00022082107456905767
+    # momentum = 0.9076709102033576
+    # rotation = 25
+    # translation = 0.2997367249516955
+    # scale = 1.1555682016679927
+    # contrast = 1.4721310555892535
+    # CE = 0.799445597335882
+    # tversky_beta = 0.8104133611908972
+    
+
+    # lr = trial.suggest_float("lr", 1e-5, 1e-2, log=True)
+    # scheduler_patience = trial.suggest_int("scheduler_patience", 5, 50)
+    # weight_decay = trial.suggest_float("weight_decay", 1e-5, 1e-2, log=True)
+    # momentum = trial.suggest_float("momentum", 0.9, 0.999)
+    # rotation = trial.suggest_int("rotation", 0, 30)
+    # translation = trial.suggest_float("translation", 0.1, 1.0)
+    # scale = trial.suggest_float("scale", 1.0, 1.5)
+    # contrast = trial.suggest_float("contrast", 1.0, 2.0)
+    # CE = trial.suggest_float("CE", 0.5, 1.0)
+    # tversky_beta = trial.suggest_float("tversky_beta", 0.5, 0.9)
 
     with mlflow.start_run(nested=True):
+
+        assert not (use_E1 and use_E1_xyz), "Cannot use both E1 and E1_xyz"
+        
         # Log hyperparameters
         mlflow.log_params(trial.params)
-
         torch.manual_seed(random_seed)
+
 
         train_dataset = DataSet(
             data_path,
@@ -71,6 +111,7 @@ def train_model(trial):
             use_mask=True,
             use_MD=use_MD,
             use_E1=use_E1,
+            use_E1_xyz=use_E1_xyz,
         )
         val_dataset = DataSet(
             val_data_path,
@@ -80,6 +121,7 @@ def train_model(trial):
             use_mask=True,
             use_MD=use_MD,
             use_E1=use_E1,
+            use_E1_xyz=use_E1_xyz,
         )
         n_train, n_val = len(train_dataset), len(val_dataset)
 
@@ -88,11 +130,15 @@ def train_model(trial):
         )
         val_dataloader = DataLoader(val_dataset, batch_size=1, shuffle=False)
 
+        mlflow_run = mlflow.active_run()
+        experiment_id = mlflow_run.info.experiment_id
+        experiment_name = mlflow.get_experiment(experiment_id).name
+
         best_val_score = 0
-        best_model_path = Path(checkpoint_path) / "best_model.pth"
+        best_model_path = Path(checkpoint_path) / f"{experiment_name}_best_model_trial_{trial.number}.pth"
 
         # extra class for background
-        n_channels = 1 + (1 if use_MD else 0) + (3 if use_E1 else 0)
+        n_channels = 1 + (1 if use_MD else 0) + (3 if use_E1 else 0) + (1 if use_E1_xyz else 0)
         unet = UNet(
             n_channels=n_channels, n_classes=4 if no_midpoint else 5, bilinear=bilinear
         )  # NOTE: more classes w/ heart mask included
@@ -152,7 +198,7 @@ def train_model(trial):
             with tqdm(
                 total=n_train, desc=f"Epoch {epoch}/{num_epochs}", unit="img"
             ) as pbar:
-                for images, labels, LV, MD, E1 in train_dataloader:
+                for images, labels, LV, MD, E1, E1_xyz in train_dataloader:
                     input_tensor = images[:, None, :, :]  # Add channel dimension
 
                     # convering keypoints into a single mask
@@ -172,10 +218,15 @@ def train_model(trial):
                         MD = MD[:, None, :, :]
                         input_tensor = torch.cat([input_tensor, MD], dim=1)
 
-                    # Concatenate E1 if used
+                    # Concatenate E1 if used -- NOTE: BROKEN
                     if use_E1:
-                        breakpoint()
                         input_tensor = torch.cat([input_tensor, E1], dim=1)
+
+                    # Concatenate E1_xyz if used
+                    if use_E1_xyz:
+                        E1_xyz = E1_xyz[:, None, :, :]
+                        input_tensor = torch.cat([input_tensor, E1_xyz], dim=1)
+                        
 
                     assert input_tensor.shape[1] == unet.n_channels, (
                         f"Network has been defined with {unet.n_channels} input channels, "
@@ -301,7 +352,7 @@ def train_model(trial):
                 state_dict = unet.state_dict()
                 torch.save(
                     state_dict,
-                    str(checkpoint_path / "checkpoint_epoch{}.pth".format(epoch)),
+                    str(checkpoint_path / f"checkpoint_epoch{epoch}.pth"),
                 )
                 logging.info(f"Checkpoint {epoch} saved!")
 
@@ -319,7 +370,7 @@ def main():
     # mlflow.set_experiment("dwi-md-e1-no-artifacts-saved-8.17")
 
     study = optuna.create_study(direction="maximize")
-    study.optimize(train_model, n_trials=30)
+    study.optimize(train_model, n_trials=8)
 
     print("Best trial:")
     trial = study.best_trial

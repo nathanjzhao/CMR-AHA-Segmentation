@@ -75,13 +75,14 @@ def generate_keypoint_image(mask_true, mask_pred, image, num_classes):
     # Add a legend
     ax.legend(handles=legend_elements)
 
-    # Save the figure to a temporary file
-    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as f:
-        fig.savefig(f.name)
+    # Create a temporary file and save the figure
+    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as temp_file:
+        fig.savefig(temp_file.name)
         plt.close(fig)
+        temp_file_path = temp_file.name
 
-        # Return the path to the file
-        return f.name, centroids_true, centroids_pred
+    return temp_file_path, centroids_true, centroids_pred
+
 
 def compile_masks(mask_true, num_classes):
     # Create a tensor of class numbers
@@ -134,9 +135,8 @@ def create_overlap_figure(red_mask, blue_mask, image_np):
         overlaps_scaled,
         image_np * 255,
     )
-    combined_image = Image.fromarray(overlay_image_np.astype(np.uint8))
 
-    return combined_image
+    return overlay_image_np.astype(np.uint8)
 
 
 def calculate_mse(mask_true, mask_pred, num_classes):

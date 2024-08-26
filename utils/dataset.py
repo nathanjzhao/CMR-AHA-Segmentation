@@ -39,6 +39,7 @@ class DataSet(Dataset):
         use_mask=False,
         use_MD=False,
         use_E1=False,
+        use_E1_xyz=False,
     ):
 
         assert os.path.exists(data_folder), "Folder not present"
@@ -72,6 +73,7 @@ class DataSet(Dataset):
         self.use_mask = use_mask
         self.use_MD = use_MD
         self.use_E1 = use_E1
+        self.use_E1_xyz = use_E1_xyz
 
     def __len__(self):
         return len(self.data_files)
@@ -115,7 +117,28 @@ class DataSet(Dataset):
         pil_image = Image.fromarray(data["NiFTi"].astype(np.uint8))
         pil_mask = Image.fromarray(data["Mask"].astype(np.uint8)) if self.use_mask else None
         pil_md = Image.fromarray(data["MD"].astype(np.uint8)) if self.use_MD else None
-        pil_e1 = Image.fromarray(data["E1"].astype(np.uint8)) if self.use_E1 else None
+        
+
+        # Handle E1 data
+        if self.use_E1:
+            try:
+                e1_data = data["E1"]
+                if e1_data.ndim == 3:
+                    # If E1 is 3D, normalize each channel separately
+                    e1_normalized = np.stack([
+                        (channel - channel.min()) / (channel.max() - channel.min()) * 255
+                        for channel in [e1_data[:,:,0], e1_data[:,:,1], e1_data[:,:,2]]
+                    ], axis=-1).astype(np.uint8)
+                    pil_e1 = Image.fromarray(e1_normalized, mode='RGB')
+                else:
+                    pil_e1 = Image.fromarray((e1_data * 255).astype(np.uint8))
+            except Exception as e:
+                print(f"Error processing E1 data: {e}")
+                pil_e1 = None
+        else:
+            pil_e1 = None
+            
+        pil_e1_xyz = Image.fromarray(np.abs(data["E1"][:,:,0] + data["E1"][:,:,1] - data["E1"][:,:,2])) if self.use_E1_xyz else None
 
         # Pad image and mask (if used) until they are 256x256
         width, height = pil_image.size
@@ -130,6 +153,8 @@ class DataSet(Dataset):
             pil_md = ImageOps.expand(pil_md, border)
         if pil_e1:
             pil_e1 = ImageOps.expand(pil_e1, border)
+        if pil_e1_xyz:
+            pil_e1_xyz = ImageOps.expand(pil_e1_xyz, border)
 
         # Apply random contrast to image (not to mask)
         contrast_factor = random.uniform(1 / self.contrast, self.contrast)
@@ -160,6 +185,8 @@ class DataSet(Dataset):
                 pil_md = F.hflip(pil_md)
             if pil_e1:
                 pil_e1 = F.hflip(pil_e1)
+            if pil_e1_xyz:
+                pil_e1_xyz = F.hflip(pil_e1_xyz)
 
             for i in range(len(label)):
                 label[i][1] = pil_image.size[0] - label[i][1]
@@ -179,6 +206,7 @@ class DataSet(Dataset):
         transformed_mask = F.affine(pil_mask, angle=-r, translate=t, scale=sc, shear=sh) if pil_mask else None
         transformed_md = F.affine(pil_md, angle=-r, translate=t, scale=sc, shear=sh) if pil_md else None
         transformed_e1 = F.affine(pil_e1, angle=-r, translate=t, scale=sc, shear=sh) if pil_e1 else None
+        transformed_e1_xyz = F.affine(pil_e1_xyz, angle=-r, translate=t, scale=sc, shear=sh) if pil_e1_xyz else None
         
         # Transform label
         transformed_label = self.transform_label(label, r, t, sc, pil_image.size)
@@ -190,7 +218,8 @@ class DataSet(Dataset):
         additional_data = [
             transforms.ToTensor()(transformed_mask)[0] if self.use_mask else [],
             transforms.ToTensor()(transformed_md)[0] if self.use_MD else [],
-            transforms.ToTensor()(transformed_e1) if self.use_E1 else []
+            transforms.ToTensor()(transformed_e1) if self.use_E1 else [],
+            transforms.ToTensor()(transformed_e1_xyz)[0] if self.use_E1_xyz else []
         ]
 
         return (NifTi, label, *additional_data)
